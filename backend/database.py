@@ -1,6 +1,6 @@
 """Database configuration and session management."""
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
@@ -41,8 +41,10 @@ def init_db():
     try:
         Base.metadata.create_all(bind=engine)
         logger.info("✅ Database initialized successfully")
+        print("✅ Database initialized successfully")
     except Exception as e:
         logger.error(f"❌ Failed to initialize database: {e}")
+        print(f"❌ Failed to initialize database: {e}")
         raise
 
 def get_db() -> Session:
@@ -71,18 +73,23 @@ def test_connection():
     """Test database connection."""
     try:
         with engine.connect() as connection:
-            connection.execute("SELECT 1")
+            result = connection.execute(text("SELECT 1"))
+            result.fetchone()
         logger.info("✅ Database connection successful")
+        print("✅ Database connection successful")
         return True
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
+        print(f"❌ Database connection failed: {e}")
         return False
 
 if __name__ == "__main__":
     # Test connection when run directly
     logging.basicConfig(level=logging.INFO)
+    print("\n🔍 Testing database connection...")
     if test_connection():
-        print("Database connection OK")
+        print("\n🚀 Initializing database tables...")
         init_db()
+        print("\n✅ Database setup complete!\n")
     else:
-        print("Database connection failed")
+        print("\n❌ Database connection failed. Check your DATABASE_URL in .env\n")
