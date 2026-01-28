@@ -158,6 +158,44 @@ Be objective and focus on market impact."""
             'sources': []
         }
 
+
+class SentimentAnalyzer:
+    """
+    Wrapper class for sentiment analysis.
+    Compatible with tasks.py and other modules.
+    """
+    
+    def __init__(self):
+        """Initialize the sentiment analyzer."""
+        self.api_key = PERPLEXITY_API_KEY
+        if not self.api_key:
+            logger.warning("⚠️ PERPLEXITY_API_KEY not set")
+    
+    def analyze(self, text: str) -> dict:
+        """
+        Analyze sentiment of text.
+        
+        Args:
+            text: Text to analyze
+            
+        Returns:
+            dict with sentiment, confidence, reasoning, key_points, sources
+        """
+        return analyze_sentiment(text)
+    
+    def analyze_batch(self, texts: list) -> list:
+        """
+        Analyze multiple texts.
+        
+        Args:
+            texts: List of texts to analyze
+            
+        Returns:
+            List of analysis results
+        """
+        return [self.analyze(text) for text in texts]
+
+
 # Test function
 if __name__ == '__main__':
     # Test with example crypto news
@@ -169,6 +207,8 @@ if __name__ == '__main__':
     
     print("Testing Perplexity sentiment analyzer...")
     print("=" * 60)
+    
+    # Test function
     result = analyze_sentiment(test_text)
     
     print(f"\n🎯 Sentiment: {result['sentiment']}")
@@ -183,4 +223,14 @@ if __name__ == '__main__':
         for source in result['sources']:
             print(f"  • {source}")
     
+    print("=" * 60)
+    
+    # Test class
+    print("\nTesting SentimentAnalyzer class...")
+    print("=" * 60)
+    
+    analyzer = SentimentAnalyzer()
+    result2 = analyzer.analyze(test_text)
+    
+    print(f"\n✅ Class test: {result2['sentiment']} ({result2['confidence']}%)")
     print("=" * 60)
