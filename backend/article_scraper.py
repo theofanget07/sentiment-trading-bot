@@ -2,6 +2,8 @@
 
 Extracts clean text from crypto news article URLs.
 Supports: CoinDesk, CoinTelegraph, Bitcoin.com, Decrypt, The Block, and more.
+
+Improved version with better anti-bot detection avoidance.
 """
 
 import logging
@@ -19,48 +21,63 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Request timeout (seconds)
-TIMEOUT = 5
+# Request timeout (seconds) - increased for slow sites
+TIMEOUT = 10
 
-# User agent to avoid blocking
+# Enhanced headers to look more like a real browser
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9,fr;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'DNT': '1',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Cache-Control': 'max-age=0',
 }
 
 # Site-specific selectors (most reliable tags for article content)
 SITE_SELECTORS = {
     'coindesk.com': {
-        'article': ['article', 'div.article-content', 'div.content-body'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', '.social-share']
+        'article': ['article', 'div.article-content', 'div.content-body', 'div.at-content'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', '.social-share', 'header']
     },
     'cointelegraph.com': {
-        'article': ['article', 'div.post-content', 'div.post__content'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.promo', '.ad-block']
+        'article': ['article', 'div.post-content', 'div.post__content', 'div.post-body'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.promo', '.ad-block', 'header']
     },
     'bitcoin.com': {
-        'article': ['article', 'div.entry-content', 'div.post-content'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement']
+        'article': ['article', 'div.entry-content', 'div.post-content', 'div.article-body'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', 'header']
     },
     'decrypt.co': {
-        'article': ['article', 'div.article-body', 'div.post-content'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.ad-wrapper']
+        'article': ['article', 'div.article-body', 'div.post-content', 'main'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.ad-wrapper', 'header']
     },
     'theblock.co': {
-        'article': ['article', 'div.article-content', 'main'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement']
+        'article': ['article', 'div.article-content', 'main', 'div.article-body'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', 'header']
     },
     'cryptoslate.com': {
-        'article': ['article', 'div.post-content', 'div.entry-content'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.ad-unit']
+        'article': ['article', 'div.post-content', 'div.entry-content', 'div.article-content'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.ad-unit', 'header']
     },
     'cryptonews.com': {
-        'article': ['article', 'div.article-body', 'div.post-content'],
-        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement']
+        'article': ['article', 'div.article-body', 'div.post-content', 'div.entry-content'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', 'header']
+    },
+    'news.bitcoin.com': {
+        'article': ['article', 'div.entry-content', 'div.article-content'],
+        'remove': ['script', 'style', 'nav', 'footer', 'aside', '.advertisement', 'header']
     },
     # Generic fallback for unknown sites
     'default': {
-        'article': ['article', 'main', 'div.content', 'div.article', 'div.post'],
-        'remove': ['script', 'style', 'nav', 'footer', 'header', 'aside', '.ad', '.advertisement', '.social']
+        'article': ['article', 'main', '[role="main"]', 'div.content', 'div.article', 'div.post', 'div.entry'],
+        'remove': ['script', 'style', 'nav', 'footer', 'header', 'aside', '.ad', '.advertisement', '.social', 'iframe']
     }
 }
 
@@ -122,9 +139,19 @@ def extract_article(url: str) -> Optional[str]:
     try:
         logger.info(f"Scraping article: {url}")
         
-        # Fetch the page
-        response = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        # Create a session to handle cookies and redirects
+        session = requests.Session()
+        session.headers.update(HEADERS)
+        
+        # Add Referer header for specific domains
+        domain = urlparse(url).netloc
+        session.headers['Referer'] = f"https://{domain}/"
+        
+        # Fetch the page with redirects enabled
+        response = session.get(url, timeout=TIMEOUT, allow_redirects=True)
         response.raise_for_status()
+        
+        logger.info(f"Response status: {response.status_code}, Content length: {len(response.content)}")
         
         # Parse HTML
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -171,7 +198,7 @@ def extract_article(url: str) -> Optional[str]:
                 logger.info(f"Successfully extracted {len(text)} characters")
                 return text
             else:
-                logger.error("Extracted text too short")
+                logger.error(f"Extracted text too short: {len(text)} characters")
                 return None
         
         logger.error("Could not extract article content")
@@ -179,6 +206,9 @@ def extract_article(url: str) -> Optional[str]:
         
     except requests.exceptions.Timeout:
         logger.error(f"Timeout ({TIMEOUT}s) while fetching: {url}")
+        return None
+    except requests.exceptions.HTTPError as e:
+        logger.error(f"HTTP error for {url}: {e.response.status_code} - {e}")
         return None
     except requests.exceptions.RequestException as e:
         logger.error(f"Request error for {url}: {e}")
@@ -222,9 +252,9 @@ def extract_urls(text: str) -> list:
 if __name__ == "__main__":
     # Test with sample URLs
     test_urls = [
-        "https://www.coindesk.com/markets/2024/01/10/bitcoin-etf-approval-sends-prices-soaring/",
-        "https://cointelegraph.com/news/ethereum-upgrade-delayed-developers-say",
-        "https://decrypt.co/latest-crypto-market-analysis",
+        "https://www.coindesk.com/learn/what-is-bitcoin/",
+        "https://cointelegraph.com/learn/what-is-bitcoin",
+        "https://decrypt.co/resources/what-is-bitcoin",
     ]
     
     print("\n" + "="*60)
