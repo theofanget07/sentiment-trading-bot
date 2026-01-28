@@ -32,5 +32,5 @@ beautifulsoup4==4.12.3
 praw==7.7.1
 
 # Testing
-pytest==8.0.0
+pytest==7.4.4
 pytest-asyncio==0.23.4
