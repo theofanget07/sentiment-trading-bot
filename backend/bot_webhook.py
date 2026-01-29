@@ -84,7 +84,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = ' '.join(context.args)
     if not user_text or len(user_text) < 10:
         await update.message.reply_text(
-            "⚠️ Please provide text to analyze.\n\n"
+            "⚠️ Please provide text to analyze.\\n\\n"
             "**Example:** `/analyze Bitcoin surges as ETFs see record inflows`",
             parse_mode='Markdown'
         )
@@ -156,7 +156,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_text(update, user_message)
     else:
         await update.message.reply_text(
-            f"💬 You said: _{user_message}_\n\nUse `/analyze` for sentiment analysis!",
+            f"💬 You said: _{user_message}_\\n\\nUse `/analyze` for sentiment analysis!",
             parse_mode='Markdown'
         )
 
@@ -192,14 +192,21 @@ def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
-    # Initialize application (synchronously, no await needed for setup)
-    asyncio.run(application.initialize())
+    # Use existing event loop or create new one
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    # Initialize application
+    loop.run_until_complete(application.initialize())
     
     # Set webhook
     if WEBHOOK_URL:
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
-        asyncio.run(application.bot.set_webhook(url=webhook_url))
+        loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
     
     logger.info("🤖 Bot ready in webhook mode")
     return application
