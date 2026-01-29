@@ -5,6 +5,7 @@ Uses Flask to receive updates instead of polling.
 """
 import os
 import logging
+import asyncio
 from dotenv import load_dotenv
 from flask import Flask, request
 from telegram import Update
@@ -191,14 +192,14 @@ def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
-    # Initialize application
-    application.initialize()
+    # Initialize application (synchronously, no await needed for setup)
+    asyncio.run(application.initialize())
     
     # Set webhook
     if WEBHOOK_URL:
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
-        application.bot.set_webhook(url=webhook_url)
+        asyncio.run(application.bot.set_webhook(url=webhook_url))
     
     logger.info("🤖 Bot ready in webhook mode")
     return application
