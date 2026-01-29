@@ -1,17 +1,16 @@
 #!/usr/bin/env python3
 """
 Telegram Bot with Webhook support for Railway deployment.
-Uses Flask to receive updates instead of polling.
+Uses FastAPI for native async support.
 """
 import os
 import logging
 import asyncio
 from dotenv import load_dotenv
-from flask import Flask, request
+from fastapi import FastAPI, Request, Response
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# Import handlers from original bot
 import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -31,13 +30,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')  # e.g., https://your-app.railway.app
+WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 PORT = int(os.getenv('PORT', 8080))
 
-app = Flask(__name__)
+app = FastAPI()
 application = None
 
-# Command handlers (same as bot.py)
+# Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     welcome_text = f"""
@@ -97,7 +96,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_text(update, user_text)
 
 async def analyze_url(update: Update, url: str):
-    scraping_msg = await update.message.reply_text(f"📰 Scraping article...", parse_mode='Markdown')
+    scraping_msg = await update.message.reply_text("📰 Scraping article...", parse_mode='Markdown')
     try:
         article_text = extract_article(url)
         if not article_text:
@@ -163,23 +162,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Error: {context.error}")
 
-@app.route('/health', methods=['GET'])
-def health():
-    return {'status': 'ok', 'mode': 'webhook'}, 200
+@app.get("/health")
+async def health():
+    return {"status": "ok", "mode": "webhook"}
 
-@app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
-def webhook():
+@app.post(f"/{TELEGRAM_TOKEN}")
+async def webhook(request: Request):
     """Handle incoming Telegram updates via webhook."""
-    if request.method == 'POST':
-        update = Update.de_json(request.get_json(force=True), application.bot)
-        # Process update in background thread to avoid blocking Flask
-        import threading
-        threading.Thread(
-            target=lambda: asyncio.run(application.update_queue.put(update))
-        ).start()
-        return 'ok'
+    try:
+        data = await request.json()
+        update = Update.de_json(data, application.bot)
+        
+        # Process update directly with application
+        await application.process_update(update)
+        
+        return Response(status_code=200)
+    except Exception as e:
+        logger.error(f"Error processing webhook: {e}")
+        return Response(status_code=500)
 
-def setup_application():
+async def setup_application():
     """Initialize the Telegram application."""
     global application
     
@@ -187,6 +189,7 @@ def setup_application():
         logger.error("TELEGRAM_BOT_TOKEN not found!")
         raise ValueError("TELEGRAM_BOT_TOKEN required")
     
+    # Build application
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     # Add handlers
@@ -196,29 +199,32 @@ def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
-    # Use existing event loop or create new one
-    try:
-        loop = asyncio.get_event_loop()
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-    
     # Initialize application
-    loop.run_until_complete(application.initialize())
+    await application.initialize()
+    await application.start()
     
     # Set webhook
     if WEBHOOK_URL:
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
-        loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
-    
-    # Start application processing in background
-    loop.run_until_complete(application.start())
+        await application.bot.set_webhook(url=webhook_url)
     
     logger.info("🤖 Bot ready in webhook mode")
-    return application
 
-if __name__ == '__main__':
-    setup_application()
-    logger.info(f"Starting Flask server on port {PORT}")
-    app.run(host='0.0.0.0', port=PORT)
+@app.on_event("startup")
+async def startup():
+    """Run on application startup."""
+    await setup_application()
+    logger.info("🚀 FastAPI server started")
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Run on application shutdown."""
+    if application:
+        await application.stop()
+        await application.shutdown()
+    logger.info("🚫Bot stopped")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=PORT)
