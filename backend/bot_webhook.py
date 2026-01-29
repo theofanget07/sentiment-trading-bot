@@ -168,11 +168,15 @@ def health():
     return {'status': 'ok', 'mode': 'webhook'}, 200
 
 @app.route(f'/{TELEGRAM_TOKEN}', methods=['POST'])
-async def webhook():
+def webhook():
     """Handle incoming Telegram updates via webhook."""
     if request.method == 'POST':
         update = Update.de_json(request.get_json(force=True), application.bot)
-        await application.update_queue.put(update)
+        # Process update in background thread to avoid blocking Flask
+        import threading
+        threading.Thread(
+            target=lambda: asyncio.run(application.update_queue.put(update))
+        ).start()
         return 'ok'
 
 def setup_application():
@@ -207,6 +211,9 @@ def setup_application():
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
         loop.run_until_complete(application.bot.set_webhook(url=webhook_url))
+    
+    # Start application processing in background
+    loop.run_until_complete(application.start())
     
     logger.info("🤖 Bot ready in webhook mode")
     return application
