@@ -2,10 +2,10 @@
 # Defines which processes to run
 
 # Main Telegram bot
-web: cd backend && python bot.py
+web: python backend/bot.py
 
 # Celery worker (processes background tasks)
-worker: cd backend && celery -A celery_app worker --loglevel=info --concurrency=4
+worker: celery -A backend.celery_app worker --loglevel=info --concurrency=4
 
 # Celery beat (scheduler for periodic tasks)
-beat: cd backend && celery -A celery_app beat --loglevel=info
+beat: celery -A backend.celery_app beat --loglevel=info
