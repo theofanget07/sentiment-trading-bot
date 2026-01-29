@@ -2,9 +2,9 @@
 # Defines which processes to run
 
 # Main Telegram bot
-web: bash start-bot.sh
+web: python bot.py
 
-# Celery worker (processes background tasks)
+# Celery worker (processes background tasks)  
 worker: python -m celery -A backend.celery_app worker --loglevel=info --concurrency=4
 
 # Celery beat (scheduler for periodic tasks)
