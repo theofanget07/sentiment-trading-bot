@@ -2,7 +2,7 @@
 builder = "NIXPACKS"
 
 [deploy]
-startCommand = "python backend/bot.py"
+startCommand = "bash start-bot.sh"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
 
