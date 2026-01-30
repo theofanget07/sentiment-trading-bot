@@ -11,13 +11,17 @@ logger = logging.getLogger(__name__)
 # Redis URL for Celery broker
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+logger.info(f"🔗 Celery broker: {REDIS_URL}")
+
 # Create Celery app
 app = Celery(
     "sentiment_bot",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['tasks']  # Import tasks module
+    include=['backend.tasks']  # Import tasks module with correct path
 )
+
+logger.info("📋 Loaded tasks: backend.tasks")
 
 # Celery configuration
 app.conf.update(
@@ -61,6 +65,8 @@ app.conf.beat_schedule = {
         'schedule': crontab(hour=3, minute=0, day_of_week=0),  # Sunday 3 AM
     },
 }
+
+logger.info(f"⏰ Configured {len(app.conf.beat_schedule)} periodic tasks")
 
 if __name__ == '__main__':
     logger.info("🚀 Starting Celery worker...")
