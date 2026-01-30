@@ -1,0 +1,22 @@
+Rapport d'avancement - 2026-01-30 17:20 CET
+
+Contexte
+- Bot Telegram fonctionnel et déployé sur Railway.
+- Objectif immédiat: créer de la valeur via automatisation (digest quotidien) et passer vers monétisation ensuite.
+
+Décision (MVP)
+- Ajouter une automatisation simple et robuste via GitHub Actions (cron), sans complexifier l'infra (Celery/worker/beat).
+
+Livrables ajoutés au repo
+- .github/workflows/daily_crypto_digest.yml: exécution quotidienne (08:05 UTC) + lancement manuel.
+- automation/daily_crypto_digest.py: script stdlib-only, fetch RSS (CoinDesk/Cointelegraph), analyse Perplexity, post Telegram.
+- automation/README.md: doc de configuration (secrets, test local).
+
+Prochaines étapes (à valider)
+1) Configurer les GitHub Secrets: PERPLEXITY_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID.
+2) Créer/choisir un Telegram Channel (lecture seule) et ajouter le bot en admin.
+3) Lancer un run manuel du workflow et vérifier le message.
+4) Ajuster l'heure du cron si nécessaire.
+
+Étape suivante du projet
+- Implémenter l'automatisation "in-app" (APScheduler) + stockage PostgreSQL + historique (semaine 1-2 du plan), puis Stripe premium.
