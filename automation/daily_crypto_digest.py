@@ -1,4 +1,4 @@
-"""Daily crypto sentiment digest (V2).
+"""Daily crypto sentiment digest (V3).
 
 This script is designed to run in GitHub Actions (scheduled) and post a daily digest to Telegram.
 
@@ -66,7 +66,7 @@ def _fetch_url(url: str, timeout_sec: int = 12) -> bytes:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "sentiment-trading-bot-digest/2.0 (+github-actions)",
+            "User-Agent": "sentiment-trading-bot-digest/3.0 (+github-actions)",
             "Accept": "application/rss+xml, application/xml, text/xml, */*",
         },
         method="GET",
@@ -186,6 +186,79 @@ def _pplx_analyze_headline(api_key: str, model: str, article: Article) -> Sentim
     return SentimentResult(sentiment=sentiment, confidence=confidence, one_liner=one_liner)
 
 
+def _generate_market_conclusion(api_key: str, model: str, articles: List[Tuple[Article, SentimentResult]], score: int, signal: str) -> str:
+    """Generate a market conclusion using Perplexity based on all analyzed articles."""
+    # Build summary of sentiment distribution
+    bullish = [r for _, r in articles if r.sentiment == "BULLISH"]
+    bearish = [r for _, r in articles if r.sentiment == "BEARISH"]
+    neutral = [r for _, r in articles if r.sentiment == "NEUTRAL"]
+
+    # Create a condensed summary for the prompt
+    summaries = []
+    for a, r in articles[:8]:  # Limit to top 8 to avoid token overflow
+        summaries.append(f"- {r.sentiment} ({r.confidence}%): {r.one_liner}")
+
+    summary_text = "\n".join(summaries)
+
+    system = (
+        "You are a crypto market analyst. Based on today's sentiment analysis, "
+        "provide a concise market conclusion in 2-3 sentences (max 280 characters). "
+        "Focus on: dominant themes, key drivers, and actionable insight. "
+        "Return ONLY plain text, no JSON, no markdown."
+    )
+
+    user = (
+        f"Sentiment Score: {score:+d}%\n"
+        f"Signal: {signal}\n"
+        f"Distribution: {len(bullish)} BULLISH, {len(bearish)} BEARISH, {len(neutral)} NEUTRAL\n\n"
+        f"Key articles:\n{summary_text}\n\n"
+        "Provide a concise market conclusion (2-3 sentences, max 280 characters)."
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 200,
+    }
+
+    req = urllib.request.Request(
+        PPLX_ENDPOINT,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            raw = resp.read().decode("utf-8")
+
+        data = json.loads(raw)
+        conclusion = data["choices"][0]["message"]["content"].strip()
+
+        # Clean up any markdown/formatting
+        conclusion = re.sub(r"```.*?```", "", conclusion, flags=re.DOTALL)
+        conclusion = re.sub(r"[*_`]", "", conclusion)
+        conclusion = re.sub(r"\s+", " ", conclusion).strip()
+
+        # Enforce max length
+        if len(conclusion) > 280:
+            conclusion = conclusion[:277] + "..."
+
+        return conclusion
+    except Exception as e:
+        print(f"WARN: Failed to generate conclusion: {e}", file=sys.stderr)
+        # Fallback to simple template
+        return f"Market sentiment at {score:+d}% with {signal} signal. Monitoring {len(articles)} key developments."
+
+
 def _sentiment_score(results: List[SentimentResult]) -> int:
     if not results:
         return 0
@@ -217,7 +290,11 @@ def _escape_markdown_v1(text: str) -> str:
     return text
 
 
-def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentResult]]) -> str:
+def _build_message(
+    date_utc: datetime,
+    articles: List[Tuple[Article, SentimentResult]],
+    conclusion: str,
+) -> str:
     grouped = {"BULLISH": [], "BEARISH": [], "NEUTRAL": []}
     for a, r in articles:
         grouped[r.sentiment].append((a, r))
@@ -228,18 +305,25 @@ def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentRe
 
     def _fmt_items(items: List[Tuple[Article, SentimentResult]]) -> str:
         lines = []
-        for a, r in items[:8]:
+        for a, r in items[:6]:  # Limit to 6 per category to make room for summaries
             title = a.title
-            if len(title) > 70:
-                title = title[:67] + "..."
-            # Escape title for Markdown
+            if len(title) > 65:
+                title = title[:62] + "..."
+            # Escape title and one-liner for Markdown
             title_escaped = _escape_markdown_v1(title)
-            # Create markdown link: [title](url)
+            one_liner_escaped = _escape_markdown_v1(r.one_liner)
+            # Format: [title](url) (confidence%)
+            #   → one-liner summary
             lines.append(f"- [{title_escaped}]({a.link}) ({r.confidence}%)")
+            if r.one_liner:
+                lines.append(f"  → {one_liner_escaped}")
         return "\n".join(lines) if lines else "- (none)"
 
     day = date_utc.strftime("%d %b %Y")
     header = f"📊 CRYPTO SENTIMENT - {day} (UTC)"
+
+    # Escape conclusion for Markdown
+    conclusion_escaped = _escape_markdown_v1(conclusion)
 
     msg = (
         f"{header}\n\n"
@@ -247,7 +331,8 @@ def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentRe
         f"📉 BEARISH ({len(grouped['BEARISH'])})\n{_fmt_items(grouped['BEARISH'])}\n\n"
         f"➡️ NEUTRAL ({len(grouped['NEUTRAL'])})\n{_fmt_items(grouped['NEUTRAL'])}\n\n"
         f"📈 Sentiment Score: {score:+d}%\n"
-        f"🎯 Signal: {signal}\n"
+        f"🎯 Signal: {signal}\n\n"
+        f"💡 Conclusion: {conclusion_escaped}"
     )
 
     # Telegram hard limit is 4096 chars for message text.
@@ -373,8 +458,15 @@ def main() -> int:
         )
         return 0
 
+    # Generate market conclusion
+    all_results = [r for _, r in analyzed]
+    score = _sentiment_score(all_results)
+    signal = _signal_from_distribution(all_results)
+    conclusion = _generate_market_conclusion(api_key=api_key, model=model, articles=analyzed, score=score, signal=signal)
+    print(f"Market conclusion: {conclusion}")
+
     now_utc = datetime.now(timezone.utc)
-    message = _build_message(date_utc=now_utc, articles=analyzed)
+    message = _build_message(date_utc=now_utc, articles=analyzed, conclusion=conclusion)
 
     _telegram_send_message(bot_token=bot_token, chat_id=chat_id, text=message)
     return 0

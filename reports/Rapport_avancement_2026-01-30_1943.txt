@@ -1,0 +1,31 @@
+Rapport d'avancement - 2026-01-30 19:43 CET
+
+Contexte
+- Bot Telegram fonctionnel et déployé sur Railway.
+- Automatisation digest quotidien V2 validée (GitHub Actions + Telegram Channel).
+- Digest automatique tous les jours à 08:05 UTC (gratuit via GitHub Actions).
+- Railway utilisé uniquement pour le bot interactif (/analyze).
+- Aucune donnée stockée pour le moment (pas encore de PostgreSQL).
+
+Livrables V3 (digest avec résumés + conclusion)
+- automation/daily_crypto_digest.py: 
+  - One-liner summaries: chaque article affiche maintenant son résumé en une phrase (→ one_liner).
+  - Conclusion marché AI-generated: Perplexity génère une conclusion globale (2-3 phrases, 280 chars max) basée sur tous les articles analysés.
+  - Format amélioré: [titre](url) (confiance%) + → résumé.
+  - Limite 6 articles par catégorie (BULLISH/BEARISH/NEUTRAL) pour faire de la place aux résumés.
+- automation/README.md: doc mise à jour avec nouveautés V3 et estimation coûts API.
+- reports/Rapport_avancement_2026-01-30_1943.txt: ce rapport.
+
+Tests à faire
+- Lancer manuellement le workflow depuis GitHub Actions (Run workflow).
+- Vérifier que les one-liners s'affichent sous chaque article.
+- Vérifier que la conclusion marché est pertinente et actionnable.
+
+Prochaines étapes (roadmap)
+- Stockage PostgreSQL + historique 30 jours (base pour premium).
+- Monétisation Stripe (€9/mois): Free vs Premium tiers.
+- Dashboard web React + FastAPI (historique, graphiques, export PDF).
+
+Étape suivante immédiate
+- Valider V3 digest avec test manuel GitHub Actions.
+- Créer rapport d'avancement final jour 3 semaine 2.
