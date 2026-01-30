@@ -7,24 +7,19 @@ python-dotenv==1.0.1
 fastapi==0.109.2
 uvicorn[standard]==0.27.1
 pydantic==2.6.1
-flask==3.0.0
 
 # Database
 sqlalchemy==2.0.27
 psycopg2-binary==2.9.9
 alembic==1.13.1
 
-# Payment
+# Payment (future use)
 stripe==8.2.0
 
-# Background Tasks
-celery==5.3.6
-redis==5.0.1
-
-# RSS Feeds
+# RSS Feeds (future use)
 feedparser==6.0.11
 
-# Email
+# Email (future use)
 sendgrid==6.11.0
 
 # Utilities
