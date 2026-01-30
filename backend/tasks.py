@@ -1,9 +1,9 @@
 """Celery background tasks."""
-from celery_app import app
-from news_fetcher import NewsFetcher
-from sentiment_analyzer import SentimentAnalyzer
-from database import get_db_session
-from models import Article, User, Analysis, SentimentEnum, SubscriptionLevel
+from backend.celery_app import app
+from backend.news_fetcher import NewsFetcher
+from backend.sentiment_analyzer import SentimentAnalyzer
+from backend.database import get_db_session
+from backend.models import Article, User, Analysis, SentimentEnum, SubscriptionLevel
 from datetime import datetime, timedelta
 import logging
 
@@ -93,7 +93,7 @@ def send_daily_digest_task():
     
     try:
         # Import here to avoid circular imports
-        from email_service import EmailService
+        from backend.email_service import EmailService
         
         email_service = EmailService()
         sent_count = 0
@@ -159,7 +159,7 @@ def post_telegram_signals_task():
     
     try:
         # Import here to avoid circular imports
-        from channel_broadcaster import ChannelBroadcaster
+        from backend.channel_broadcaster import ChannelBroadcaster
         
         broadcaster = ChannelBroadcaster()
         
