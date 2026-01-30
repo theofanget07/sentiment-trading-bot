@@ -18,6 +18,10 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . /app
 
+# Copy and make entrypoint executable
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Set Python path to include backend directory
 ENV PYTHONPATH=/app/backend:$PYTHONPATH
 ENV PYTHONUNBUFFERED=1
@@ -25,5 +29,5 @@ ENV PYTHONUNBUFFERED=1
 # Expose port (Railway will override this)
 EXPOSE 8080
 
-# Start the bot
-CMD ["python", "bot.py"]
+# Use smart entrypoint that detects SERVICE_TYPE
+ENTRYPOINT ["/app/entrypoint.sh"]
