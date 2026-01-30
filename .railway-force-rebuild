@@ -1,0 +1,15 @@
+# Railway Force Rebuild Trigger
+# This file forces Railway to rebuild all services from scratch
+
+Build timestamp: 2026-01-30 16:35 CET
+Reason: Ensure entrypoint.sh is properly included in Docker image
+
+Expected behavior:
+- entrypoint.sh should be copied and made executable
+- Each service should start with: 🚀 Starting Railway service...
+- SERVICE_TYPE environment variable controls which service starts
+
+Services:
+- web: FastAPI + Telegram Bot
+- worker: Celery Worker (background tasks)
+- beat: Celery Beat (scheduler)
