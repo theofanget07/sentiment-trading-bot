@@ -6,11 +6,13 @@ set -e
 
 echo "🚀 Starting Railway service..."
 echo "📦 SERVICE_TYPE: ${SERVICE_TYPE:-not set}"
+echo "📁 Working directory: $(pwd)"
+echo "🐍 Python path: $PYTHONPATH"
 
 case "$SERVICE_TYPE" in
   web)
     echo "🌐 Starting Web Service (FastAPI + Telegram Bot)"
-    cd backend && exec uvicorn bot_webhook:app --host 0.0.0.0 --port ${PORT:-8080}
+    exec python -m uvicorn backend.bot_webhook:app --host 0.0.0.0 --port ${PORT:-8080}
     ;;
   
   worker)
