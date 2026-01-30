@@ -1,0 +1,29 @@
+Rapport d'avancement - 2026-01-30 19:32 CET
+
+Contexte
+- Bot Telegram fonctionnel et déployé sur Railway.
+- Automatisation digest quotidien V1 validée (GitHub Actions + Telegram Channel).
+- Premier digest posté avec succès dans @crypto_sentiment_daily.
+
+Livrables V2 (digest amélioré)
+- automation/daily_crypto_digest.py: 
+  - Liens cliquables Markdown pour chaque article (titre → URL source).
+  - Filtre de confiance: DIGEST_MIN_CONFIDENCE (0-100, défaut 0) pour ne garder que les analyses solides.
+  - Sources configurables: DIGEST_SOURCES (coindesk,cointelegraph) pour activer/désactiver les flux RSS.
+  - Escape Markdown pour éviter erreurs Telegram.
+  - parse_mode=Markdown + disable_web_page_preview.
+- automation/README.md: doc mise à jour avec nouveautés V2.
+- .github/workflows/daily_crypto_digest.yml: ajout env vars DIGEST_MIN_CONFIDENCE et DIGEST_SOURCES.
+
+Tests à faire
+- Lancer manuellement le workflow depuis GitHub Actions (Run workflow).
+- Vérifier que les liens sont cliquables dans le message Telegram.
+- Tester filtre confiance (ex: DIGEST_MIN_CONFIDENCE=75) et observer articles filtrés.
+
+Prochaines étapes (roadmap)
+- Stockage PostgreSQL + historique 30 jours (base pour premium).
+- Monétisation Stripe (€9/mois): Free vs Premium tiers.
+- Dashboard web React + FastAPI (historique, graphiques, export PDF).
+
+Étape suivante immédiate
+- Valider V2 digest avec test manuel GitHub Actions.

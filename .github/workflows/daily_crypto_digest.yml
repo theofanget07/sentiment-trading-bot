@@ -29,5 +29,7 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DIGEST_MAX_ITEMS: ${{ secrets.DIGEST_MAX_ITEMS }}
+          DIGEST_MIN_CONFIDENCE: ${{ secrets.DIGEST_MIN_CONFIDENCE }}
+          DIGEST_SOURCES: ${{ secrets.DIGEST_SOURCES }}
         run: |
           python automation/daily_crypto_digest.py

@@ -1,4 +1,4 @@
-"""Daily crypto sentiment digest.
+"""Daily crypto sentiment digest (V2).
 
 This script is designed to run in GitHub Actions (scheduled) and post a daily digest to Telegram.
 
@@ -11,7 +11,9 @@ Env vars:
 - PERPLEXITY_MODEL (optional, default: sonar-pro)
 - TELEGRAM_BOT_TOKEN (required)
 - TELEGRAM_CHAT_ID (required)  # can be @channelusername or numeric chat id
-- DIGEST_MAX_ITEMS (optional, default: 10)
+- DIGEST_MAX_ITEMS (optional, default: 10, min 3, max 25)
+- DIGEST_MIN_CONFIDENCE (optional, default: 0, min 0, max 100) - filter out items below this confidence
+- DIGEST_SOURCES (optional, default: coindesk,cointelegraph) - comma-separated list
 
 """
 
@@ -32,6 +34,11 @@ from typing import List, Optional, Tuple
 
 
 PPLX_ENDPOINT = "https://api.perplexity.ai/chat/completions"
+
+AVAILABLE_SOURCES = {
+    "coindesk": ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
+    "cointelegraph": ("Cointelegraph", "https://cointelegraph.com/rss"),
+}
 
 
 @dataclass
@@ -59,7 +66,7 @@ def _fetch_url(url: str, timeout_sec: int = 12) -> bytes:
     req = urllib.request.Request(
         url,
         headers={
-            "User-Agent": "sentiment-trading-bot-digest/1.0 (+github-actions)",
+            "User-Agent": "sentiment-trading-bot-digest/2.0 (+github-actions)",
             "Accept": "application/rss+xml, application/xml, text/xml, */*",
         },
         method="GET",
@@ -201,6 +208,15 @@ def _signal_from_distribution(results: List[SentimentResult]) -> str:
     return "HOLD"
 
 
+def _escape_markdown_v1(text: str) -> str:
+    """Escape special chars for Telegram MarkdownV1 (basic escaping)."""
+    # MarkdownV1 special chars: _ * [ ] ( ) ~ ` > # + - = | { } . !
+    # We only escape the most common ones that break links
+    for char in ["_", "*", "[", "`"]:
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
 def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentResult]]) -> str:
     grouped = {"BULLISH": [], "BEARISH": [], "NEUTRAL": []}
     for a, r in articles:
@@ -214,9 +230,12 @@ def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentRe
         lines = []
         for a, r in items[:8]:
             title = a.title
-            if len(title) > 85:
-                title = title[:82] + "..."
-            lines.append(f"- {title} ({r.confidence}%)")
+            if len(title) > 70:
+                title = title[:67] + "..."
+            # Escape title for Markdown
+            title_escaped = _escape_markdown_v1(title)
+            # Create markdown link: [title](url)
+            lines.append(f"- [{title_escaped}]({a.link}) ({r.confidence}%)")
         return "\n".join(lines) if lines else "- (none)"
 
     day = date_utc.strftime("%d %b %Y")
@@ -238,9 +257,14 @@ def _build_message(date_utc: datetime, articles: List[Tuple[Article, SentimentRe
     return msg
 
 
-def _telegram_send_message(bot_token: str, chat_id: str, text: str) -> None:
+def _telegram_send_message(bot_token: str, chat_id: str, text: str, parse_mode: str = "Markdown") -> None:
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    data = urllib.parse.urlencode({"chat_id": chat_id, "text": text}).encode("utf-8")
+    data = urllib.parse.urlencode({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": parse_mode,
+        "disable_web_page_preview": "true",  # Avoid cluttering with link previews
+    }).encode("utf-8")
 
     req = urllib.request.Request(
         url,
@@ -277,10 +301,23 @@ def main() -> int:
         max_items = 10
     max_items = max(3, min(25, max_items))
 
-    feeds = [
-        ("CoinDesk", "https://www.coindesk.com/arc/outboundfeeds/rss/"),
-        ("Cointelegraph", "https://cointelegraph.com/rss"),
-    ]
+    try:
+        min_confidence = int(os.getenv("DIGEST_MIN_CONFIDENCE") or "0")
+    except Exception:
+        min_confidence = 0
+    min_confidence = max(0, min(100, min_confidence))
+
+    # Parse sources (comma-separated)
+    sources_str = os.getenv("DIGEST_SOURCES") or "coindesk,cointelegraph"
+    source_keys = [s.strip().lower() for s in sources_str.split(",") if s.strip()]
+    feeds = [(AVAILABLE_SOURCES[k][0], AVAILABLE_SOURCES[k][1]) for k in source_keys if k in AVAILABLE_SOURCES]
+
+    if not feeds:
+        print("ERROR: No valid sources configured. Check DIGEST_SOURCES env var.", file=sys.stderr)
+        return 1
+
+    print(f"Fetching from sources: {[f[0] for f in feeds]}")
+    print(f"Max items: {max_items}, Min confidence: {min_confidence}%")
 
     articles: List[Article] = []
     for source, url in feeds:
@@ -304,6 +341,7 @@ def main() -> int:
             bot_token=bot_token,
             chat_id=chat_id,
             text="📊 CRYPTO SENTIMENT - (UTC)\n\nNo articles fetched today (RSS fetch failed).",
+            parse_mode="",
         )
         return 0
 
@@ -314,13 +352,26 @@ def main() -> int:
     for idx, a in enumerate(deduped, start=1):
         try:
             r = _pplx_analyze_headline(api_key=api_key, model=model, article=a)
-            analyzed.append((a, r))
-            print(f"OK {idx}/{len(deduped)}: {r.sentiment} {r.confidence}% - {a.title}")
+            # Filter by confidence
+            if r.confidence >= min_confidence:
+                analyzed.append((a, r))
+                print(f"OK {idx}/{len(deduped)}: {r.sentiment} {r.confidence}% - {a.title}")
+            else:
+                print(f"SKIP {idx}/{len(deduped)}: {r.sentiment} {r.confidence}% (below threshold) - {a.title}")
         except Exception as e:
             print(f"WARN: analysis failed for {a.link}: {e}", file=sys.stderr)
 
         # Gentle pacing to reduce rate-limit risk
         time.sleep(1.2)
+
+    if not analyzed:
+        _telegram_send_message(
+            bot_token=bot_token,
+            chat_id=chat_id,
+            text=f"📊 CRYPTO SENTIMENT - (UTC)\n\nNo articles met confidence threshold ({min_confidence}%).",
+            parse_mode="",
+        )
+        return 0
 
     now_utc = datetime.now(timezone.utc)
     message = _build_message(date_utc=now_utc, articles=analyzed)
