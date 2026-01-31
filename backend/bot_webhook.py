@@ -77,7 +77,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start - Welcome message
 /help - This help
 /analyze - Analyze sentiment
-/portfolio - View holdings (coming soon)
+/portfolio - View your holdings
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -96,6 +96,60 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_url(update, urls[0])
     else:
         await analyze_text(update, user_text)
+
+async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Display user's crypto portfolio holdings."""
+    user_id = update.effective_user.id
+    
+    try:
+        from database import get_db
+        from models import UserPosition
+        from sqlalchemy import func
+        
+        db = next(get_db())
+        
+        # Get user's active positions
+        positions = db.query(UserPosition).filter(
+            UserPosition.telegram_user_id == user_id,
+            UserPosition.quantity > 0
+        ).all()
+        
+        if not positions:
+            await update.message.reply_text(
+                "💼 **Your Portfolio is Empty**\\n\\n"
+                "You don't have any crypto holdings yet.\\n\\n"
+                "_Portfolio tracking feature coming soon!_",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Calculate total value
+        total_value = sum(pos.quantity * (pos.avg_buy_price or 0) for pos in positions)
+        
+        # Build response
+        response = "💼 **Your Crypto Portfolio**\\n\\n"
+        
+        for pos in positions:
+            symbol_emoji = {'BTC': '₿', 'ETH': 'Ξ', 'SOL': '◎'}.get(pos.symbol.upper(), '💰')
+            current_value = pos.quantity * (pos.avg_buy_price or 0)
+            
+            response += f"{symbol_emoji} **{pos.symbol.upper()}**\\n"
+            response += f"   Amount: `{pos.quantity:.8f}`\\n"
+            response += f"   Avg Price: `${pos.avg_buy_price:.2f}`\\n"
+            response += f"   Value: `${current_value:.2f}`\\n\\n"
+        
+        response += f"**Total Portfolio Value:** `${total_value:.2f}`\\n\\n"
+        response += "_Real-time price tracking coming soon!_"
+        
+        await update.message.reply_text(response, parse_mode='Markdown')
+        
+    except Exception as e:
+        logger.error(f"Portfolio command error: {e}")
+        await update.message.reply_text(
+            "❌ **Portfolio Error**\\n\\n"
+            "Unable to load your portfolio. Please try again later.",
+            parse_mode='Markdown'
+        )
 
 async def analyze_url(update: Update, url: str):
     scraping_msg = await update.message.reply_text("📰 Scraping article...", parse_mode='Markdown')
@@ -168,52 +222,6 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 async def health():
     return {"status": "ok", "mode": "webhook"}
 
-@app.get("/db-status")
-async def db_status():
-    """
-    Debug endpoint to verify PostgreSQL tables exist.
-    Returns list of tables and connection status.
-    """
-    try:
-        from database import engine
-        from sqlalchemy import inspect
-        
-        # Get inspector
-        inspector = inspect(engine)
-        
-        # Get all table names
-        tables = inspector.get_table_names()
-        
-        # Check for portfolio tables
-        portfolio_tables = [
-            'user_positions',
-            'position_transactions', 
-            'position_recommendations',
-            'daily_digests'
-        ]
-        
-        portfolio_status = {
-            table: (table in tables) for table in portfolio_tables
-        }
-        
-        return {
-            "status": "connected",
-            "database_url": os.getenv('DATABASE_URL', 'Not set')[:50] + "...",
-            "total_tables": len(tables),
-            "all_tables": sorted(tables),
-            "portfolio_tables_status": portfolio_status,
-            "portfolio_ready": all(portfolio_status.values()),
-            "message": "✅ All portfolio tables exist!" if all(portfolio_status.values()) else "⚠️ Some portfolio tables missing"
-        }
-        
-    except Exception as e:
-        logger.error(f"DB status check failed: {e}")
-        return {
-            "status": "error",
-            "error": str(e),
-            "message": "❌ Database connection failed"
-        }
-
 @app.post(f"/{TELEGRAM_TOKEN}")
 async def webhook(request: Request):
     """Handle incoming Telegram updates via webhook."""
@@ -244,6 +252,7 @@ async def setup_application():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
+    application.add_handler(CommandHandler("portfolio", portfolio_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
@@ -261,35 +270,29 @@ async def setup_application():
 
 def init_database_schema():
     """Initialize portfolio database tables (synchronous function)."""
-    logger.info("========================================")
-    logger.info("🚀 Initializing Portfolio Database")
-    logger.info("========================================")
-    
     try:
         from init_portfolio_tables import init_portfolio_tables
         success = init_portfolio_tables()
         
         if success:
-            logger.info("✅ Portfolio database ready")
+            logger.info("✅ Portfolio database initialized")
         else:
-            logger.warning("⚠️  Portfolio init returned False (tables may already exist)")
+            logger.info("ℹ️ Portfolio tables already exist")
         
-        logger.info("========================================")
         return success
         
     except Exception as e:
-        logger.error(f"❌ Portfolio database init failed: {e}")
-        logger.info("⚠️  Continuing anyway (tables may already exist)")
-        logger.info("========================================")
+        logger.error(f"❌ Portfolio init failed: {e}")
+        logger.info("⚠️ Continuing (tables may already exist)")
         return False
 
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
-    # Initialize database tables BEFORE starting bot
+    # Initialize database tables
     init_database_schema()
     
-    # Then start Telegram bot
+    # Start Telegram bot
     await setup_application()
     logger.info("🚀 FastAPI server started")
 
