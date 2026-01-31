@@ -8,7 +8,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
-from telegram import Update
+from telegram import Update, BotCommand
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 import sys
@@ -276,6 +276,16 @@ async def setup_application():
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
         logger.info(f"Setting webhook to: {webhook_url}")
         await application.bot.set_webhook(url=webhook_url)
+    
+    # Register bot commands with Telegram
+    commands = [
+        BotCommand("start", "Show welcome message"),
+        BotCommand("help", "Get help and usage info"),
+        BotCommand("analyze", "Analyze crypto news sentiment"),
+        BotCommand("portfolio", "View your crypto holdings")
+    ]
+    await application.bot.set_my_commands(commands)
+    logger.info("✅ Bot commands registered with Telegram")
     
     logger.info("🤖 Bot ready in webhook mode")
 
