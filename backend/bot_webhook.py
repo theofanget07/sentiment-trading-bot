@@ -168,6 +168,52 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 async def health():
     return {"status": "ok", "mode": "webhook"}
 
+@app.get("/db-status")
+async def db_status():
+    """
+    Debug endpoint to verify PostgreSQL tables exist.
+    Returns list of tables and connection status.
+    """
+    try:
+        from database import engine
+        from sqlalchemy import inspect
+        
+        # Get inspector
+        inspector = inspect(engine)
+        
+        # Get all table names
+        tables = inspector.get_table_names()
+        
+        # Check for portfolio tables
+        portfolio_tables = [
+            'user_positions',
+            'position_transactions', 
+            'position_recommendations',
+            'daily_digests'
+        ]
+        
+        portfolio_status = {
+            table: (table in tables) for table in portfolio_tables
+        }
+        
+        return {
+            "status": "connected",
+            "database_url": os.getenv('DATABASE_URL', 'Not set')[:50] + "...",
+            "total_tables": len(tables),
+            "all_tables": sorted(tables),
+            "portfolio_tables_status": portfolio_status,
+            "portfolio_ready": all(portfolio_status.values()),
+            "message": "✅ All portfolio tables exist!" if all(portfolio_status.values()) else "⚠️ Some portfolio tables missing"
+        }
+        
+    except Exception as e:
+        logger.error(f"DB status check failed: {e}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "❌ Database connection failed"
+        }
+
 @app.post(f"/{TELEGRAM_TOKEN}")
 async def webhook(request: Request):
     """Handle incoming Telegram updates via webhook."""
