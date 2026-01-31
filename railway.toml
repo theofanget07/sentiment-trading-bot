@@ -1,12 +1,9 @@
 # Railway configuration for sentiment trading bot
-# Includes automatic database migration before starting services
+# Uses Dockerfile with automatic database initialization
 
 [build]
-builder = "NIXPACKS"
-
-[build.nixpacksOptions]
-# Run database init before starting services
-initCommand = "bash scripts/railway_init.sh"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
 
 [deploy]
 restartPolicyType = "ON_FAILURE"
