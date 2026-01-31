@@ -14,7 +14,13 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from sentiment_analyzer import analyze_sentiment
-from portfolio_manager import portfolio_manager
+
+# Fix: Use absolute import for Railway deployment
+try:
+    from backend.portfolio_manager import portfolio_manager
+except ImportError:
+    # Fallback for local development
+    from portfolio_manager import portfolio_manager
 
 try:
     from article_scraper import extract_article, extract_urls
