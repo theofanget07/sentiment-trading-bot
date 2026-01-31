@@ -48,6 +48,7 @@ I'm your AI-powered crypto sentiment analyzer powered by Perplexity AI.
 /start - Show this message
 /help - Get help
 /analyze <text> - Analyze crypto news sentiment
+/portfolio - View your crypto holdings
 
 **NEW! 🔥 URL Support:**
 Send me any crypto news article URL and I'll automatically extract and analyze it!
@@ -76,6 +77,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 /start - Welcome message
 /help - This help
 /analyze - Analyze sentiment
+/portfolio - View holdings (coming soon)
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -211,9 +213,37 @@ async def setup_application():
     
     logger.info("🤖 Bot ready in webhook mode")
 
+def init_database_schema():
+    """Initialize portfolio database tables (synchronous function)."""
+    logger.info("========================================")
+    logger.info("🚀 Initializing Portfolio Database")
+    logger.info("========================================")
+    
+    try:
+        from init_portfolio_tables import init_portfolio_tables
+        success = init_portfolio_tables()
+        
+        if success:
+            logger.info("✅ Portfolio database ready")
+        else:
+            logger.warning("⚠️  Portfolio init returned False (tables may already exist)")
+        
+        logger.info("========================================")
+        return success
+        
+    except Exception as e:
+        logger.error(f"❌ Portfolio database init failed: {e}")
+        logger.info("⚠️  Continuing anyway (tables may already exist)")
+        logger.info("========================================")
+        return False
+
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
+    # Initialize database tables BEFORE starting bot
+    init_database_schema()
+    
+    # Then start Telegram bot
     await setup_application()
     logger.info("🚀 FastAPI server started")
 
