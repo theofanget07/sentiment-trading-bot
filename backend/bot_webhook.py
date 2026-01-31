@@ -100,51 +100,62 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display user's crypto portfolio holdings."""
     user_id = update.effective_user.id
+    logger.info(f"💼 Portfolio command called by user {user_id}")
     
     try:
-        from database import get_db
+        from database import SessionLocal
         from models import UserPosition
-        from sqlalchemy import func
         
-        db = next(get_db())
+        # Create new database session
+        db = SessionLocal()
         
-        # Get user's active positions
-        positions = db.query(UserPosition).filter(
-            UserPosition.telegram_user_id == user_id,
-            UserPosition.quantity > 0
-        ).all()
-        
-        if not positions:
-            await update.message.reply_text(
-                "💼 **Your Portfolio is Empty**\\n\\n"
-                "You don't have any crypto holdings yet.\\n\\n"
-                "_Portfolio tracking feature coming soon!_",
-                parse_mode='Markdown'
-            )
-            return
-        
-        # Calculate total value
-        total_value = sum(pos.quantity * (pos.avg_buy_price or 0) for pos in positions)
-        
-        # Build response
-        response = "💼 **Your Crypto Portfolio**\\n\\n"
-        
-        for pos in positions:
-            symbol_emoji = {'BTC': '₿', 'ETH': 'Ξ', 'SOL': '◎'}.get(pos.symbol.upper(), '💰')
-            current_value = pos.quantity * (pos.avg_buy_price or 0)
+        try:
+            # Get user's active positions
+            positions = db.query(UserPosition).filter(
+                UserPosition.telegram_user_id == user_id,
+                UserPosition.quantity > 0
+            ).all()
             
-            response += f"{symbol_emoji} **{pos.symbol.upper()}**\\n"
-            response += f"   Amount: `{pos.quantity:.8f}`\\n"
-            response += f"   Avg Price: `${pos.avg_buy_price:.2f}`\\n"
-            response += f"   Value: `${current_value:.2f}`\\n\\n"
-        
-        response += f"**Total Portfolio Value:** `${total_value:.2f}`\\n\\n"
-        response += "_Real-time price tracking coming soon!_"
-        
-        await update.message.reply_text(response, parse_mode='Markdown')
+            logger.info(f"Found {len(positions)} positions for user {user_id}")
+            
+            if not positions:
+                await update.message.reply_text(
+                    "💼 **Your Portfolio is Empty**\\n\\n"
+                    "You don't have any crypto holdings yet.\\n\\n"
+                    "_Portfolio tracking feature coming soon!_",
+                    parse_mode='Markdown'
+                )
+                return
+            
+            # Calculate total value
+            total_value = sum(pos.quantity * (pos.avg_buy_price or 0) for pos in positions)
+            
+            # Build response
+            response = "💼 **Your Crypto Portfolio**\\n\\n"
+            
+            for pos in positions:
+                symbol_emoji = {'BTC': '₿', 'ETH': 'Ξ', 'SOL': '◎'}.get(pos.symbol.upper(), '💰')
+                current_value = pos.quantity * (pos.avg_buy_price or 0)
+                
+                response += f"{symbol_emoji} **{pos.symbol.upper()}**\\n"
+                response += f"   Amount: `{pos.quantity:.8f}`\\n"
+                response += f"   Avg Price: `${pos.avg_buy_price:.2f}`\\n"
+                response += f"   Value: `${current_value:.2f}`\\n\\n"
+            
+            response += f"**Total Portfolio Value:** `${total_value:.2f}`\\n\\n"
+            response += "_Real-time price tracking coming soon!_"
+            
+            await update.message.reply_text(response, parse_mode='Markdown')
+            logger.info(f"✅ Portfolio sent successfully to user {user_id}")
+            
+        finally:
+            db.close()
         
     except Exception as e:
-        logger.error(f"Portfolio command error: {e}")
+        logger.error(f"❌ Portfolio command error for user {user_id}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
         await update.message.reply_text(
             "❌ **Portfolio Error**\\n\\n"
             "Unable to load your portfolio. Please try again later.",
