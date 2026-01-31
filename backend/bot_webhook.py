@@ -5,7 +5,6 @@ Uses FastAPI for native async support.
 """
 import os
 import logging
-import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from telegram import Update
@@ -15,6 +14,8 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 
 from sentiment_analyzer import analyze_sentiment
+from portfolio_manager import portfolio_manager
+
 try:
     from article_scraper import extract_article, extract_urls
 except ImportError:
@@ -98,23 +99,33 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_text(update, user_text)
 
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display user's crypto portfolio holdings - simplified version."""
+    """Display user's crypto portfolio holdings."""
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "User"
     
     logger.info(f"💼 /portfolio called by user {user_id} (@{username})")
     
     try:
+        # Get portfolio from JSON storage
+        portfolio = portfolio_manager.get_portfolio(user_id, username)
+        
         response = "💼 **Your Crypto Portfolio**\\n\\n"
-        response += "✅ **Portfolio feature is active!**\\n\\n"
-        response += f"User ID: `{user_id}`\\n"
-        response += f"Username: @{username}\\n\\n"
-        response += "_Database integration in progress..._\\n\\n"
-        response += "**Demo Portfolio:**\\n"
-        response += "₿ **BTC**: 0.00000000\\n"
-        response += "Ξ **ETH**: 0.00000000\\n"
-        response += "◎ **SOL**: 0.00000000\\n\\n"
-        response += "**Total Value:** $0.00"
+        
+        if not portfolio["positions"]:
+            response += "_Your portfolio is empty._\\n\\n"
+            response += "To add positions, use:\\n"
+            response += "`/add BTC 0.01 98000`\\n"
+        else:
+            for symbol, pos in portfolio["positions"].items():
+                qty = pos["quantity"]
+                price = pos["avg_price"]
+                value = qty * price
+                response += f"**{symbol}**\\n"
+                response += f"  • Quantity: `{qty}`\\n"
+                response += f"  • Avg Price: `${price:,.2f}`\\n"
+                response += f"  • Value: `${value:,.2f}`\\n\\n"
+            
+            response += f"**Total Value:** `${portfolio['total_value_usd']:,.2f}`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /portfolio response sent to {user_id}")
@@ -125,7 +136,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error**\\n\\nSomething went wrong.",
+            "❌ **Error**\\n\\nSomething went wrong. Please try again.",
             parse_mode='Markdown'
         )
 
@@ -200,7 +211,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "mode": "webhook"}
+    return {"status": "ok", "mode": "webhook", "storage": "json"}
 
 @app.post(f"/{TELEGRAM_TOKEN}")
 async def webhook(request: Request):
@@ -236,7 +247,7 @@ async def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
-    logger.info("✅ All handlers registered: start, help, analyze, portfolio")
+    logger.info("✅ Handlers registered: /start /help /analyze /portfolio")
     
     # Initialize application
     await application.initialize()
@@ -249,21 +260,14 @@ async def setup_application():
         await application.bot.set_webhook(url=webhook_url)
         logger.info("✅ Webhook configured")
     
-    logger.info("🤖 Bot ready in webhook mode")
+    logger.info("🤖 Bot ready with JSON storage")
 
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
-    logger.info("🚀 FastAPI startup initiated")
-    
-    # DISABLED: Database init (to avoid blocking startup)
-    # init_database_schema()
-    logger.info("⚠️  Database init disabled for debugging")
-    
-    # Start Telegram bot
+    logger.info("🚀 FastAPI startup - JSON storage mode")
     await setup_application()
-    
-    logger.info("✅ FastAPI server ready")
+    logger.info("✅ Server ready")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -271,7 +275,7 @@ async def shutdown():
     if application:
         await application.stop()
         await application.shutdown()
-    logger.info("🚫Bot stopped")
+    logger.info("🛑 Bot stopped")
 
 if __name__ == "__main__":
     import uvicorn
