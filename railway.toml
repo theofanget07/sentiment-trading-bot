@@ -1,12 +1,13 @@
-# Railway configuration for multi-service deployment
-# Railway will automatically use Procfile to detect services
+# Railway configuration for sentiment trading bot
+# Includes automatic database migration before starting services
 
 [build]
-builder = "DOCKERFILE"
-dockerfilePath = "Dockerfile"
+builder = "NIXPACKS"
 
-# Deploy configuration without startCommand
-# This forces Railway to use Procfile for service definitions
+[build.nixpacksOptions]
+# Run database init before starting services
+initCommand = "bash scripts/railway_init.sh"
+
 [deploy]
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
