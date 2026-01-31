@@ -100,65 +100,32 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display user's crypto portfolio holdings."""
     user_id = update.effective_user.id
-    logger.info(f"💼 Portfolio command called by user {user_id}")
+    username = update.effective_user.username or update.effective_user.first_name
+    logger.info(f"💼 Portfolio command received from user {user_id} (@{username})")
     
     try:
-        from database import SessionLocal
-        from models import UserPosition
+        # Simplified version - always respond first to test handler
+        response = "💼 **Your Crypto Portfolio**\\n\\n"
+        response += "✅ Portfolio feature is active!\\n\\n"
+        response += f"User ID: `{user_id}`\\n"
+        response += f"Username: @{username}\\n\\n"
+        response += "_Database integration coming soon..._\\n\\n"
+        response += "**Demo Portfolio:**\\n"
+        response += "₿ **BTC**: 0.00000000\\n"
+        response += "Ξ **ETH**: 0.00000000\\n"
+        response += "◎ **SOL**: 0.00000000\\n\\n"
+        response += "**Total Value:** $0.00"
         
-        # Create new database session
-        db = SessionLocal()
-        
-        try:
-            # Get user's active positions
-            positions = db.query(UserPosition).filter(
-                UserPosition.telegram_user_id == user_id,
-                UserPosition.quantity > 0
-            ).all()
-            
-            logger.info(f"Found {len(positions)} positions for user {user_id}")
-            
-            if not positions:
-                await update.message.reply_text(
-                    "💼 **Your Portfolio is Empty**\\n\\n"
-                    "You don't have any crypto holdings yet.\\n\\n"
-                    "_Portfolio tracking feature coming soon!_",
-                    parse_mode='Markdown'
-                )
-                return
-            
-            # Calculate total value
-            total_value = sum(pos.quantity * (pos.avg_buy_price or 0) for pos in positions)
-            
-            # Build response
-            response = "💼 **Your Crypto Portfolio**\\n\\n"
-            
-            for pos in positions:
-                symbol_emoji = {'BTC': '₿', 'ETH': 'Ξ', 'SOL': '◎'}.get(pos.symbol.upper(), '💰')
-                current_value = pos.quantity * (pos.avg_buy_price or 0)
-                
-                response += f"{symbol_emoji} **{pos.symbol.upper()}**\\n"
-                response += f"   Amount: `{pos.quantity:.8f}`\\n"
-                response += f"   Avg Price: `${pos.avg_buy_price:.2f}`\\n"
-                response += f"   Value: `${current_value:.2f}`\\n\\n"
-            
-            response += f"**Total Portfolio Value:** `${total_value:.2f}`\\n\\n"
-            response += "_Real-time price tracking coming soon!_"
-            
-            await update.message.reply_text(response, parse_mode='Markdown')
-            logger.info(f"✅ Portfolio sent successfully to user {user_id}")
-            
-        finally:
-            db.close()
+        await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ Portfolio response sent to user {user_id}")
         
     except Exception as e:
-        logger.error(f"❌ Portfolio command error for user {user_id}: {e}")
+        logger.error(f"❌ Portfolio error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Portfolio Error**\\n\\n"
-            "Unable to load your portfolio. Please try again later.",
+            "❌ **Error**\\n\\nSomething went wrong. Please try again.",
             parse_mode='Markdown'
         )
 
@@ -227,7 +194,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
-    logger.error(f"Error: {context.error}")
+    logger.error(f"Bot error: {context.error}")
+    import traceback
+    logger.error(''.join(traceback.format_exception(None, context.error, context.error.__traceback__)))
 
 @app.get("/health")
 async def health():
@@ -245,7 +214,9 @@ async def webhook(request: Request):
         
         return Response(status_code=200)
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        logger.error(f"Webhook error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         return Response(status_code=500)
 
 async def setup_application():
@@ -267,6 +238,8 @@ async def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
+    logger.info("✅ All command handlers registered")
+    
     # Initialize application
     await application.initialize()
     await application.start()
@@ -285,7 +258,7 @@ async def setup_application():
         BotCommand("portfolio", "View your crypto holdings")
     ]
     await application.bot.set_my_commands(commands)
-    logger.info("✅ Bot commands registered with Telegram")
+    logger.info("✅ Bot commands registered with Telegram API")
     
     logger.info("🤖 Bot ready in webhook mode")
 
@@ -310,12 +283,15 @@ def init_database_schema():
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
+    logger.info("🚀 Starting up...")
+    
     # Initialize database tables
     init_database_schema()
     
     # Start Telegram bot
     await setup_application()
-    logger.info("🚀 FastAPI server started")
+    
+    logger.info("✅ FastAPI server ready")
 
 @app.on_event("shutdown")
 async def shutdown():
