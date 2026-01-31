@@ -8,7 +8,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
-from telegram import Update, BotCommand
+from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 import sys
@@ -98,18 +98,18 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_text(update, user_text)
 
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Display user's crypto portfolio holdings."""
+    """Display user's crypto portfolio holdings - simplified version."""
     user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.first_name
-    logger.info(f"💼 Portfolio command received from user {user_id} (@{username})")
+    username = update.effective_user.username or update.effective_user.first_name or "User"
+    
+    logger.info(f"💼 /portfolio called by user {user_id} (@{username})")
     
     try:
-        # Simplified version - always respond first to test handler
         response = "💼 **Your Crypto Portfolio**\\n\\n"
-        response += "✅ Portfolio feature is active!\\n\\n"
+        response += "✅ **Portfolio feature is active!**\\n\\n"
         response += f"User ID: `{user_id}`\\n"
         response += f"Username: @{username}\\n\\n"
-        response += "_Database integration coming soon..._\\n\\n"
+        response += "_Database integration in progress..._\\n\\n"
         response += "**Demo Portfolio:**\\n"
         response += "₿ **BTC**: 0.00000000\\n"
         response += "Ξ **ETH**: 0.00000000\\n"
@@ -117,15 +117,15 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response += "**Total Value:** $0.00"
         
         await update.message.reply_text(response, parse_mode='Markdown')
-        logger.info(f"✅ Portfolio response sent to user {user_id}")
+        logger.info(f"✅ /portfolio response sent to {user_id}")
         
     except Exception as e:
-        logger.error(f"❌ Portfolio error: {e}")
+        logger.error(f"❌ /portfolio error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error**\\n\\nSomething went wrong. Please try again.",
+            "❌ **Error**\\n\\nSomething went wrong.",
             parse_mode='Markdown'
         )
 
@@ -208,10 +208,7 @@ async def webhook(request: Request):
     try:
         data = await request.json()
         update = Update.de_json(data, application.bot)
-        
-        # Process update directly with application
         await application.process_update(update)
-        
         return Response(status_code=200)
     except Exception as e:
         logger.error(f"Webhook error: {e}")
@@ -227,10 +224,11 @@ async def setup_application():
         logger.error("TELEGRAM_BOT_TOKEN not found!")
         raise ValueError("TELEGRAM_BOT_TOKEN required")
     
-    # Build application
+    logger.info("🔧 Building Telegram application...")
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     # Add handlers
+    logger.info("📌 Registering command handlers...")
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
@@ -238,7 +236,7 @@ async def setup_application():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
-    logger.info("✅ All command handlers registered")
+    logger.info("✅ All handlers registered: start, help, analyze, portfolio")
     
     # Initialize application
     await application.initialize()
@@ -247,46 +245,20 @@ async def setup_application():
     # Set webhook
     if WEBHOOK_URL:
         webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
-        logger.info(f"Setting webhook to: {webhook_url}")
+        logger.info(f"🔗 Setting webhook: {webhook_url[:60]}...")
         await application.bot.set_webhook(url=webhook_url)
-    
-    # Register bot commands with Telegram
-    commands = [
-        BotCommand("start", "Show welcome message"),
-        BotCommand("help", "Get help and usage info"),
-        BotCommand("analyze", "Analyze crypto news sentiment"),
-        BotCommand("portfolio", "View your crypto holdings")
-    ]
-    await application.bot.set_my_commands(commands)
-    logger.info("✅ Bot commands registered with Telegram API")
+        logger.info("✅ Webhook configured")
     
     logger.info("🤖 Bot ready in webhook mode")
-
-def init_database_schema():
-    """Initialize portfolio database tables (synchronous function)."""
-    try:
-        from init_portfolio_tables import init_portfolio_tables
-        success = init_portfolio_tables()
-        
-        if success:
-            logger.info("✅ Portfolio database initialized")
-        else:
-            logger.info("ℹ️ Portfolio tables already exist")
-        
-        return success
-        
-    except Exception as e:
-        logger.error(f"❌ Portfolio init failed: {e}")
-        logger.info("⚠️ Continuing (tables may already exist)")
-        return False
 
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
-    logger.info("🚀 Starting up...")
+    logger.info("🚀 FastAPI startup initiated")
     
-    # Initialize database tables
-    init_database_schema()
+    # DISABLED: Database init (to avoid blocking startup)
+    # init_database_schema()
+    logger.info("⚠️  Database init disabled for debugging")
     
     # Start Telegram bot
     await setup_application()
