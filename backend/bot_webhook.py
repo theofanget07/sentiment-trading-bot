@@ -219,18 +219,21 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 async def health():
     return {"status": "ok", "mode": "webhook", "storage": "json"}
 
-@app.get("/{token}")
+# Use :path converter to handle Telegram token with colon
+@app.get("/{token:path}")
 async def webhook_health(token: str):
     """Respond to Telegram's GET request when setting webhook."""
     if token != TELEGRAM_TOKEN:
+        logger.warning(f"⚠️  Invalid token in GET request: {token[:20]}...")
         return Response(status_code=404)
     logger.info("✅ Webhook health check (GET) received")
     return {"status": "ok", "method": "GET"}
 
-@app.post("/{token}")
+@app.post("/{token:path}")
 async def webhook(token: str, request: Request):
     """Handle incoming Telegram updates via webhook."""
     if token != TELEGRAM_TOKEN:
+        logger.warning(f"⚠️  Invalid token in POST request: {token[:20]}...")
         return Response(status_code=404)
     
     try:
