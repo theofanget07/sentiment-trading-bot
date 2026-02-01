@@ -1,13 +1,5 @@
-# Railway configuration for sentiment trading bot
-# Uses Dockerfile with automatic database initialization
+# Railway configuration - Dockerfile mode only
 
 [build]
 builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
-
-[deploy]
-restartPolicyType = "ON_FAILURE"
-restartPolicyMaxRetries = 10
-
-[env]
-PYTHONUNBUFFERED = "1"
