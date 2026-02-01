@@ -2,11 +2,11 @@
 
 > AI-powered crypto sentiment analysis bot powered by Perplexity AI
 > 
-> **Week 1 Day 3 Live** - URL Scraping Feature ✨
+> **Week 2 Day 4 Live** - Portfolio Tracking with JSON Storage ✨
 
 ## 📌 Overview
 
-Telegram bot that analyzes crypto news sentiment using Perplexity AI. Now with **automatic article scraping** from URLs!
+Telegram bot that analyzes crypto news sentiment using Perplexity AI. Now with **portfolio tracking** and **JSON-based storage**!
 
 **Telegram:** [@sentiment_trading_test_bot](https://t.me/sentiment_trading_test_bot)
 
@@ -14,7 +14,7 @@ Telegram bot that analyzes crypto news sentiment using Perplexity AI. Now with *
 
 ## 🚀 Features
 
-### ✅ Implemented (Week 1)
+### ✅ Implemented (Week 1-2)
 
 - **Sentiment Analysis** - Analyze crypto news with Perplexity AI
   - Returns: BULLISH 🚀 | BEARISH 📉 | NEUTRAL ➡️
@@ -22,7 +22,7 @@ Telegram bot that analyzes crypto news sentiment using Perplexity AI. Now with *
   - Reasoning + Key points
   - Additional sources
 
-- **URL Scraping** 🔥 NEW!
+- **URL Scraping** 🔥
   - Auto-detect URLs in messages
   - Extract article text automatically
   - Support for 7+ crypto news sites:
@@ -35,18 +35,28 @@ Telegram bot that analyzes crypto news sentiment using Perplexity AI. Now with *
     - CryptoNews
     - Generic fallback for other sites
 
+- **Portfolio Tracking** 💼 NEW!
+  - View your crypto holdings with `/portfolio`
+  - JSON-based storage (no database required)
+  - Track positions, transactions, recommendations
+  - Ready for backtesting integration
+
 - **Smart Auto-Analysis**
   - Detects URLs and scrapes automatically
   - Auto-analyzes long text messages (>30 chars)
   - Manual analysis with `/analyze` command
 
-### ⏳ Coming Soon (Week 1-3)
+- **Railway Deployment** 🚂
+  - Running 24/7 on Railway.app
+  - Webhook mode for instant responses
+  - Automatic redeploys on GitHub push
 
-- Database integration (PostgreSQL)
-- User management & subscriptions
-- Premium tier (€9/month)
-- Deployment to Railway (24/7)
+### ⏳ Coming Soon (Week 2-3)
+
+- Add positions: `/add BTC 0.01 98000`
+- Transaction history: `/history`
 - Daily digest emails
+- Premium tier (€9/month)
 - Historical sentiment tracking
 
 ---
@@ -71,7 +81,13 @@ Or:
 Check this out! https://cointelegraph.com/news/eth-upgrade
 ```
 
-### 3. Auto-Analysis
+### 3. Check Portfolio
+
+```
+/portfolio
+```
+
+### 4. Auto-Analysis
 
 Just send any long text (>30 chars):
 
@@ -83,10 +99,13 @@ Ethereum upgrade successful, gas fees drop 50% overnight
 
 ## 🛠 Tech Stack
 
-- **Language:** Python 3.11.9
+- **Language:** Python 3.11
 - **Bot Framework:** python-telegram-bot 20.7
 - **AI:** Perplexity API (sonar model)
 - **Scraping:** BeautifulSoup4 + requests
+- **Storage:** JSON files (backend/user_data/)
+- **Web Framework:** FastAPI (webhook mode)
+- **Deployment:** Railway.app
 - **Version Control:** Git + GitHub
 
 ### Dependencies
@@ -96,6 +115,7 @@ python-telegram-bot==20.7
 anthropic==0.18.1
 python-dotenv==1.0.1
 fastapi==0.109.2
+uvicorn[standard]==0.27.1
 sqlalchemy==2.0.27
 celery==5.3.6
 requests==2.31.0
@@ -109,11 +129,16 @@ beautifulsoup4==4.12.3
 ```
 sentiment-trading-bot/
 ├── backend/
-│   ├── bot.py                   # Main Telegram bot
+│   ├── bot_webhook.py           # Main Telegram bot (webhook mode)
 │   ├── sentiment_analyzer.py    # Perplexity AI integration
-│   ├── article_scraper.py       # URL scraping module 🆕
-│   ├── test_article_scraper.py  # Test suite 🆕
+│   ├── article_scraper.py       # URL scraping module
+│   ├── portfolio_manager.py     # Portfolio tracking (JSON) 🆕
+│   ├── user_data/              # JSON storage directory 🆕
+│   │   ├── portfolios.json
+│   │   ├── transactions.json
+│   │   └── recommendations.json
 │   └── requirements.txt         # Python dependencies
+├── Dockerfile                   # Railway deployment config
 ├── .env.example                 # Environment variables template
 └── README.md                    # This file
 ```
@@ -164,13 +189,14 @@ Edit `.env` and add:
 ```
 TELEGRAM_BOT_TOKEN=your_bot_token_from_BotFather
 PERPLEXITY_API_KEY=your_perplexity_api_key
+WEBHOOK_URL=https://your-railway-url.up.railway.app
 ```
 
 5. **Run the bot**
 
 ```bash
 cd backend
-python bot.py
+python bot_webhook.py
 ```
 
 ---
@@ -184,70 +210,65 @@ cd backend
 python test_article_scraper.py
 ```
 
-**Expected output:**
-- Test 1: URL detection ✅
-- Test 2: Article scraping (5 URLs) ✅
-- Test 3: Error handling ✅
-- Summary: Success rate 60%+
-
 ### Test in Telegram
 
-1. Start bot: `python bot.py`
+1. Start bot: `python bot_webhook.py`
 2. Open [@sentiment_trading_test_bot](https://t.me/sentiment_trading_test_bot)
 3. Try:
    - `/start`
    - `/help`
    - `/analyze Bitcoin surges to new high`
+   - `/portfolio`
    - `https://www.coindesk.com/markets/`
 
 ---
 
-## 📊 Article Scraper Details
-
-### Supported Sites
-
-| Site | Selector Strategy | Status |
-|------|------------------|--------|
-| CoinDesk | `article`, `div.article-content` | ✅ |
-| CoinTelegraph | `article`, `div.post-content` | ✅ |
-| Bitcoin.com | `article`, `div.entry-content` | ✅ |
-| Decrypt | `article`, `div.article-body` | ✅ |
-| The Block | `article`, `div.article-content` | ✅ |
-| CryptoSlate | `article`, `div.post-content` | ✅ |
-| CryptoNews | `article`, `div.article-body` | ✅ |
-| Others | Generic fallback | ⚠️ |
+## 📊 Portfolio Manager Details
 
 ### Features
 
-- **Timeout:** 5 seconds max per request
-- **Error Handling:** HTTP errors, timeouts, malformed HTML
-- **Content Cleaning:** Removes ads, scripts, navigation
-- **Fallback:** Multiple strategies if primary fails
-- **Logging:** Detailed logs for debugging
+- **Zero dependencies** - Pure JSON storage
+- **User isolation** - Separate data per user ID
+- **Atomic operations** - Thread-safe reads/writes
+- **Scalable** - Ready for 100+ users
 
-### Performance
+### Data Structure
 
-- **Average time:** 2-3 seconds per article
-- **Success rate:** 60-80% (depends on site structure)
-- **Min content:** 100 characters required
+```json
+{
+  "123456789": {
+    "username": "@trader",
+    "positions": {
+      "BTC": {
+        "quantity": 0.01,
+        "avg_price": 98000,
+        "last_updated": "2026-01-31T10:00:00Z"
+      }
+    },
+    "total_value_usd": 980.00,
+    "created_at": "2026-01-31T09:00:00Z"
+  }
+}
+```
 
 ---
 
 ## 🎯 Roadmap
 
-### Week 1 (Current) - MVP Foundation
+### Week 1 (Complete) - MVP Foundation ✅
 
-- ✅ Day 1-2: Bot setup + Perplexity integration
-- ✅ Day 3-4: URL scraping + multi-site support
-- ⏳ Day 5-6: Railway deployment (24/7)
-- ⏳ Day 7: Polish + beta user feedback
+- ✅ Bot setup + Perplexity integration
+- ✅ URL scraping + multi-site support
+- ✅ Railway deployment (24/7)
+- ✅ Beta user feedback
 
-### Week 2 - Automation
+### Week 2 (In Progress) - Automation
 
-- Database setup (PostgreSQL)
-- Automated news fetching (RSS, Reddit, Twitter)
-- Background tasks (Celery + Redis)
-- Daily digest emails
+- ✅ JSON storage for portfolios
+- ⏳ Add/remove positions commands
+- ⏳ Transaction history
+- ⏳ Automated news fetching (RSS, Reddit)
+- ⏳ Background tasks (Celery + Redis)
 
 ### Week 3 - Monetization
 
@@ -267,15 +288,16 @@ python test_article_scraper.py
 
 ## 📈 Progress
 
-**Current Status:** Week 1 Day 3 (50% complete)
+**Current Status:** Week 2 Day 4 (65% complete)
 
 | Milestone | Status | Date |
 |-----------|--------|------|
 | Bot setup | ✅ Complete | Jan 27, 2026 |
 | Sentiment analysis | ✅ Complete | Jan 27, 2026 |
 | URL scraping | ✅ Complete | Jan 28, 2026 |
-| Railway deploy | ⏳ In progress | - |
-| Database | 📅 Planned | Week 2 |
+| Railway deploy | ✅ Complete | Jan 30, 2026 |
+| Portfolio tracking | ✅ Complete | Feb 1, 2026 |
+| Add/history commands | ⏳ In progress | - |
 | Monetization | 📅 Planned | Week 3 |
 
 ---
@@ -298,17 +320,15 @@ Private project - All rights reserved.
 - Role: Project Manager @ Groupe E Celsius
 - Location: Lausanne, Switzerland
 - Project: Building €5k+/month SaaS in 6 months
-- LinkedIn: [Add your LinkedIn]
-- Twitter: [Add your Twitter]
 
 ---
 
 ## 📧 Support
 
 For issues or questions:
-1. Check the [test script](backend/test_article_scraper.py)
-2. Review [logs](backend/bot.py) (run with `python bot.py`)
-3. Open an issue on GitHub (coming soon)
+1. Check Railway logs for deployment issues
+2. Review bot logs (`python bot_webhook.py`)
+3. Test locally before pushing to GitHub
 
 ---
 
@@ -316,22 +336,22 @@ For issues or questions:
 
 - **Telegram Bot:** [@sentiment_trading_test_bot](https://t.me/sentiment_trading_test_bot)
 - **GitHub Repo:** [theofanget07/sentiment-trading-bot](https://github.com/theofanget07/sentiment-trading-bot)
+- **Railway App:** [Dashboard](https://railway.app/dashboard)
 - **Commits:** [View commits](https://github.com/theofanget07/sentiment-trading-bot/commits/main)
 
 ---
 
 ## 📊 Latest Updates
 
-### January 28, 2026 - Day 3 🔥
+### February 1, 2026 - Day 4 🔥
 
-- ✅ Added `article_scraper.py` (7,864 bytes)
-- ✅ Multi-site support (7+ crypto news sites)
-- ✅ Updated `bot.py` with URL auto-detection
-- ✅ Created comprehensive test suite
-- ✅ 3 commits pushed to GitHub
-- ✅ ~550 lines of production-ready code
+- ✅ Fixed portfolio_manager import for Railway
+- ✅ Corrected module path (backend.portfolio_manager)
+- ✅ Added try/except fallback for local dev
+- ✅ Triggered redeploy with updated code
+- ✅ Portfolio tracking now fully functional
 
-**Next:** Railway deployment (Week 1 Day 5)
+**Next:** Add positions commands (`/add`, `/remove`, `/history`)
 
 ---
 
