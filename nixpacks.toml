@@ -1,8 +1,0 @@
-[phases.setup]
-nixPkgs = ["python311", "postgresql"]
-
-[phases.install]
-cmds = ["python -m pip install -r backend/requirements.txt"]
-
-[start]
-cmd = "python bot.py"
