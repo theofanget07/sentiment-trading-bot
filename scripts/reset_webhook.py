@@ -38,7 +38,10 @@ def delete_webhook():
 
 def set_webhook():
     """Set new webhook URL"""
-    webhook_endpoint = f"{WEBHOOK_URL}/{TELEGRAM_BOT_TOKEN}"
+    # Fix: Use the simplified /webhook endpoint instead of /{token}
+    clean_webhook_url = WEBHOOK_URL.rstrip('/')
+    webhook_endpoint = f"{clean_webhook_url}/webhook"
+    
     print(f"🔧 Setting webhook to: {webhook_endpoint}")
     
     response = requests.post(
