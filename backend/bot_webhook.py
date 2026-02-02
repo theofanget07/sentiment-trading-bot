@@ -215,28 +215,23 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     import traceback
     logger.error(''.join(traceback.format_exception(None, context.error, context.error.__traceback__)))
 
+# Root endpoint for health checks
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "Sentiment Trading Bot Running"}
+
 @app.get("/health")
 async def health():
     return {"status": "ok", "mode": "webhook", "storage": "json"}
 
-# Use :path converter to handle Telegram token with colon
-@app.get("/{token:path}")
-async def webhook_health(token: str):
-    """Respond to Telegram's GET request when setting webhook."""
-    if token != TELEGRAM_TOKEN:
-        logger.warning(f"⚠️  Invalid token in GET request: {token[:20]}...")
-        return Response(status_code=404)
-    logger.info("✅ Webhook health check (GET) received")
-    return {"status": "ok", "method": "GET"}
-
-@app.post("/{token:path}")
-async def webhook(token: str, request: Request):
-    """Handle incoming Telegram updates via webhook."""
-    if token != TELEGRAM_TOKEN:
-        logger.warning(f"⚠️  Invalid token in POST request: {token[:20]}...")
-        return Response(status_code=404)
-    
+# SIMPLIFIED WEBHOOK ENDPOINT (No dynamic path param)
+@app.post("/webhook")
+async def webhook(request: Request):
+    """Handle incoming Telegram updates via simple webhook path."""
     try:
+        # Log that we received a request (for debugging)
+        logger.info("📩 Webhook request received")
+        
         data = await request.json()
         update = Update.de_json(data, application.bot)
         await application.process_update(update)
@@ -246,6 +241,17 @@ async def webhook(token: str, request: Request):
         import traceback
         logger.error(traceback.format_exc())
         return Response(status_code=500)
+
+@app.get("/webhook")
+async def webhook_check():
+    """Simple GET check for webhook endpoint"""
+    return {"status": "ok", "method": "GET", "endpoint": "/webhook"}
+
+# Catch-all for debugging 404s
+@app.api_route("/{path_name:path}", methods=["GET", "POST"])
+async def catch_all(request: Request, path_name: str):
+    logger.warning(f"⚠️ Unhandled path accessed: {path_name}")
+    return {"status": "error", "message": f"Path {path_name} not found"}
 
 async def setup_application():
     """Initialize the Telegram application."""
@@ -273,11 +279,14 @@ async def setup_application():
     await application.initialize()
     await application.start()
     
-    # Set webhook
+    # Set webhook using the SIMPLIFIED path
     if WEBHOOK_URL:
-        webhook_url = f"{WEBHOOK_URL}/{TELEGRAM_TOKEN}"
-        logger.info(f"🔗 Setting webhook: {webhook_url[:60]}...")
-        await application.bot.set_webhook(url=webhook_url)
+        # Remove trailing slash if present
+        clean_webhook_url = WEBHOOK_URL.rstrip('/')
+        webhook_endpoint = f"{clean_webhook_url}/webhook"
+        
+        logger.info(f"🔗 Setting webhook to SIMPLIFIED URL: {webhook_endpoint}")
+        await application.bot.set_webhook(url=webhook_endpoint)
         logger.info("✅ Webhook configured")
     
     logger.info("🤖 Bot ready with JSON storage")
