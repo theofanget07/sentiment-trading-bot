@@ -103,7 +103,7 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = ' '.join(context.args)
     if not user_text or len(user_text) < 10:
         await update.message.reply_text(
-            "⚠️ Please provide text to analyze.\\n\\n"
+            "⚠️ Please provide text to analyze.\n\n"
             "**Example:** `/analyze Bitcoin surges as ETFs see record inflows`",
             parse_mode='Markdown'
         )
@@ -126,15 +126,16 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get portfolio with current prices
         portfolio = portfolio_manager.get_portfolio_with_prices(user_id, username)
         
-        response = "💼 **Your Crypto Portfolio**\\n\\n"
-        
         if not portfolio["positions"]:
-            response += "_Your portfolio is empty._\\n\\n"
-            response += "To add positions, use:\\n"
-            response += "`/add BTC 0.5 45000`\\n\\n"
-            response += "**Supported cryptos:**\\n"
+            response = "💼 **Your Crypto Portfolio**\n\n"
+            response += "_Your portfolio is empty._\n\n"
+            response += "To add positions, use:\n"
+            response += "`/add BTC 0.5 45000`\n\n"
+            response += "**Supported cryptos:**\n"
             response += "BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM"
         else:
+            response = "💼 **Your Crypto Portfolio**\n"
+            
             for symbol, pos in portfolio["positions"].items():
                 qty = pos["quantity"]
                 avg_price = pos["avg_price"]
@@ -146,14 +147,14 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Choose emoji based on P&L
                 pnl_emoji = "🟢" if pnl_percent > 0 else ("🔴" if pnl_percent < 0 else "⚪")
                 
-                response += f"**{symbol}** {pnl_emoji}\\n"
-                response += f"  • Quantity: `{qty:.8g}`\\n"
-                response += f"  • Avg Price: `{format_price(avg_price)}`\\n"
-                response += f"  • Current: `{format_price(current_price)}`\\n"
-                response += f"  • Value: `{format_price(current_value)}`\\n"
-                response += f"  • P&L: `{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)`\\n\\n"
+                response += f"\n**{symbol}** {pnl_emoji}\n"
+                response += f"  • Quantity: `{qty:.8g}`\n"
+                response += f"  • Avg Price: `{format_price(avg_price)}`\n"
+                response += f"  • Current: `{format_price(current_price)}`\n"
+                response += f"  • Value: `{format_price(current_value)}`\n"
+                response += f"  • P&L: `{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)`"
             
-            response += f"**Total Value:** `{format_price(portfolio['total_current_value'])}`"
+            response += f"\n\n**Total Value:** `{format_price(portfolio['total_current_value'])}`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /portfolio response sent to {user_id}")
@@ -164,7 +165,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error**\\n\\nSomething went wrong. Please try again.",
+            "❌ **Error**\n\nSomething went wrong. Please try again.",
             parse_mode='Markdown'
         )
 
@@ -180,8 +181,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Validate arguments
     if len(context.args) != 3:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/add <symbol> <quantity> <price>`\\n\\n"
-            "**Example:** `/add BTC 0.5 45000`\\n\\n"
+            "⚠️ **Usage:** `/add <symbol> <quantity> <price>`\n\n"
+            "**Example:** `/add BTC 0.5 45000`\n\n"
             "This will add 0.5 BTC bought at $45,000 to your portfolio.",
             parse_mode='Markdown'
         )
@@ -194,8 +195,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = float(context.args[2])
     except ValueError:
         await update.message.reply_text(
-            "❌ **Invalid input**\\n\\n"
-            "Quantity and price must be numbers.\\n\\n"
+            "❌ **Invalid input**\n\n"
+            "Quantity and price must be numbers.\n\n"
             "**Example:** `/add BTC 0.5 45000`",
             parse_mode='Markdown'
         )
@@ -216,20 +217,20 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Get current market price for comparison
         current_price = get_crypto_price(symbol)
         
-        response = f"✅ **Position {result['action'].capitalize()}**\\n\\n"
-        response += f"**{symbol}**\\n"
-        response += f"  • Quantity: `{result['quantity']:.8g}`\\n"
-        response += f"  • Avg Price: `{format_price(result['avg_price'])}`\\n"
-        response += f"  • Total Invested: `{format_price(result['quantity'] * result['avg_price'])}`\\n\\n"
+        response = f"✅ **Position {result['action'].capitalize()}**\n\n"
+        response += f"**{symbol}**\n"
+        response += f"  • Quantity: `{result['quantity']:.8g}`\n"
+        response += f"  • Avg Price: `{format_price(result['avg_price'])}`\n"
+        response += f"  • Total Invested: `{format_price(result['quantity'] * result['avg_price'])}`\n"
         
         if current_price:
             current_value = result['quantity'] * current_price
             pnl_usd = current_value - (result['quantity'] * result['avg_price'])
             pnl_percent = ((current_price - result['avg_price']) / result['avg_price']) * 100
             
-            response += f"📊 **Current Status:**\\n"
-            response += f"  • Market Price: `{format_price(current_price)}`\\n"
-            response += f"  • Current Value: `{format_price(current_value)}`\\n"
+            response += f"\n📊 **Current Status:**\n"
+            response += f"  • Market Price: `{format_price(current_price)}`\n"
+            response += f"  • Current Value: `{format_price(current_value)}`\n"
             response += f"  • P&L: `{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
@@ -238,8 +239,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ /add error: {e}")
         await update.message.reply_text(
-            f"❌ **Error adding position**\\n\\n"
-            f"Make sure `{symbol}` is a supported crypto.\\n\\n"
+            f"❌ **Error adding position**\n\n"
+            f"Make sure `{symbol}` is a supported crypto.\n\n"
             f"**Supported:** BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
             parse_mode='Markdown'
         )
@@ -255,8 +256,8 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Validate arguments
     if len(context.args) != 1:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/remove <symbol>`\\n\\n"
-            "**Example:** `/remove BTC`\\n\\n"
+            "⚠️ **Usage:** `/remove <symbol>`\n\n"
+            "**Example:** `/remove BTC`\n\n"
             "This will remove your entire BTC position.",
             parse_mode='Markdown'
         )
@@ -269,12 +270,12 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         success = portfolio_manager.remove_position(user_id, symbol)
         
         if success:
-            response = f"✅ **Position Removed**\\n\\n"
-            response += f"`{symbol}` has been removed from your portfolio.\\n\\n"
+            response = f"✅ **Position Removed**\n\n"
+            response += f"`{symbol}` has been removed from your portfolio.\n\n"
             response += "Use `/portfolio` to see your updated holdings."
         else:
-            response = f"⚠️ **Position Not Found**\\n\\n"
-            response += f"You don't have a `{symbol}` position in your portfolio.\\n\\n"
+            response = f"⚠️ **Position Not Found**\n\n"
+            response += f"You don't have a `{symbol}` position in your portfolio.\n\n"
             response += "Use `/portfolio` to see your current holdings."
         
         await update.message.reply_text(response, parse_mode='Markdown')
@@ -283,7 +284,7 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"❌ /remove error: {e}")
         await update.message.reply_text(
-            "❌ **Error removing position**\\n\\nPlease try again.",
+            "❌ **Error removing position**\n\nPlease try again.",
             parse_mode='Markdown'
         )
 
@@ -300,8 +301,8 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not portfolio["positions"]:
             await update.message.reply_text(
-                "📊 **Portfolio Summary**\\n\\n"
-                "_Your portfolio is empty._\\n\\n"
+                "📊 **Portfolio Summary**\n\n"
+                "_Your portfolio is empty._\n\n"
                 "Use `/add` to start tracking your crypto positions!",
                 parse_mode='Markdown'
             )
@@ -316,10 +317,11 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Overall emoji
         overall_emoji = "🚀" if total_pnl > 0 else ("📉" if total_pnl < 0 else "➡️")
         
-        response = f"{overall_emoji} **Portfolio Summary**\\n\\n"
+        response = f"{overall_emoji} **Portfolio Summary**\n"
+        response += f"━━━━━━━━━━━━━━━━━━\n"
         
         # Position breakdown
-        response += f"**💼 Positions:** {len(portfolio['positions'])}\\n\\n"
+        response += f"**💼 Positions:** {len(portfolio['positions'])}\n"
         
         # Top 3 gainers/losers
         sorted_positions = sorted(
@@ -329,23 +331,19 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         if len(sorted_positions) > 0:
-            response += "**🏆 Top Performer:**\\n"
             top = sorted_positions[0]
-            response += f"`{top[0]}`: {top[1]['pnl_percent']:+.2f}%\\n\\n"
+            response += f"**🏆 Top:** `{top[0]}` ({top[1]['pnl_percent']:+.2f}%)\n"
         
         if len(sorted_positions) > 1:
-            response += "**📉 Worst Performer:**\\n"
             worst = sorted_positions[-1]
-            response += f"`{worst[0]}`: {worst[1]['pnl_percent']:+.2f}%\\n\\n"
+            response += f"**📉 Worst:** `{worst[0]}` ({worst[1]['pnl_percent']:+.2f}%)\n"
         
         # Total stats
-        response += "**💰 Total Stats:**\\n"
-        response += f"  • Invested: `{format_price(total_invested)}`\\n"
-        response += f"  • Current Value: `{format_price(total_current)}`\\n"
-        response += f"  • **Total P&L: `{total_pnl:+,.2f} USD`**\\n"
-        response += f"  • **ROI: `{total_pnl_pct:+.2f}%`**\\n\\n"
-        
-        response += "_Powered by CoinGecko (prices cached 5 min)_"
+        response += f"\n**💰 Total Stats:**\n"
+        response += f"• Invested: `{format_price(total_invested)}`\n"
+        response += f"• Current: `{format_price(total_current)}`\n"
+        response += f"• **P&L: `{total_pnl:+,.2f} USD ({total_pnl_pct:+.2f}%)`**\n"
+        response += f"\n_Prices via CoinGecko (cached 5 min)_"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /summary sent to user {user_id}")
@@ -356,7 +354,7 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error generating summary**\\n\\nPlease try again.",
+            "❌ **Error generating summary**\n\nPlease try again.",
             parse_mode='Markdown'
         )
 
@@ -372,14 +370,14 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if not transactions:
             await update.message.reply_text(
-                "📃 **Transaction History**\\n\\n"
-                "_No transactions yet._\\n\\n"
+                "📃 **Transaction History**\n\n"
+                "_No transactions yet._\n\n"
                 "Use `/add` to start tracking your trades!",
                 parse_mode='Markdown'
             )
             return
         
-        response = "📃 **Recent Transactions** (last 10)\\n\\n"
+        response = "📃 **Recent Transactions**\n"
         
         for tx in transactions:
             # Parse timestamp
@@ -388,13 +386,13 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             date_str = ts.strftime("%b %d, %H:%M")
             
             action = tx["action"]
-            action_emoji = {"BUY": "🟫", "SELL": "🟬", "REMOVE": "🗑"}.get(action, "➡️")
+            action_emoji = {"BUY": "🟫", "SELL": "🟫", "REMOVE": "🗑"}.get(action, "➡️")
             
-            response += f"{action_emoji} **{action}** `{tx['symbol']}`\\n"
-            response += f"  {date_str} • {tx['quantity']:.8g} @ {format_price(tx['price'])}\\n"
-            response += f"  Total: `{format_price(tx['total_usd'])}`\\n\\n"
+            response += f"\n{action_emoji} **{action}** `{tx['symbol']}`\n"
+            response += f"  {date_str} • {tx['quantity']:.8g} @ {format_price(tx['price'])}\n"
+            response += f"  Total: `{format_price(tx['total_usd'])}`"
         
-        response += f"_Showing last {len(transactions)} transaction(s)_"
+        response += f"\n\n_Last {len(transactions)} transaction(s)_"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /history sent to user {user_id}")
@@ -405,7 +403,7 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error loading history**\\n\\nPlease try again.",
+            "❌ **Error loading history**\n\nPlease try again.",
             parse_mode='Markdown'
         )
 
@@ -469,7 +467,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await analyze_text(update, user_message)
     else:
         await update.message.reply_text(
-            f"💬 You said: _{user_message}_\\n\\nUse `/analyze` for sentiment analysis!",
+            f"💬 You said: _{user_message}_\n\nUse `/analyze` for sentiment analysis!",
             parse_mode='Markdown'
         )
 
