@@ -27,6 +27,12 @@ try:
 except ImportError:
     from crypto_prices import format_price, get_crypto_price
 
+# Import database init function
+try:
+    from backend.database import init_db
+except ImportError:
+    from database import init_db
+
 try:
     from article_scraper import extract_article, extract_urls
 except ImportError:
@@ -563,6 +569,16 @@ async def setup_application():
 async def startup():
     """Run on application startup."""
     logger.info("🚀 FastAPI startup - JSON storage + portfolio P&L mode")
+    
+    # Create PostgreSQL tables if they don't exist
+    try:
+        logger.info("🔨 Initializing database tables...")
+        init_db()
+        logger.info("✅ Database tables ready")
+    except Exception as e:
+        logger.warning(f"⚠️ Database initialization warning: {e}")
+        logger.info("📁 Continuing with JSON storage fallback")
+    
     await setup_application()
     logger.info("✅ Server ready")
 
