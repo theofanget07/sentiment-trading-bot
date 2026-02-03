@@ -89,10 +89,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   _Ex: `/add BTC 0.5 45000`_
   _Ex: `/add ETH 10 2500`_
 
-• `/remove <SYMBOL>` - Supprime une position
-  _Ex: `/remove BTC`_
+• `/remove <SYMBOL> [quantité]` - Supprime une position (totale ou partielle)
+  _Ex: `/remove BTC` (supprime tout)_
+  _Ex: `/remove BTC 0.5` (retire 0.5 BTC)_
 
-• `/summary` - Résumé global (P&L total, valeur investie)
+• `/sell <SYMBOL> <quantité> <prix>` - ⚡ NOUVEAU! Vend et enregistre P&L réalisé
+  _Ex: `/sell BTC 0.5 75000`_
+
+• `/summary` - Résumé global (P&L réalisé + non-réalisé, best/worst performers)
 
 • `/history` - Historique des 5 dernières transactions
 
@@ -107,6 +111,7 @@ BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 • Calcul P&L automatique
 • Historique transactions
 • Portfolio multi-cryptos
+• Vente partielle + tracking P&L réalisé
 
 _Tape `/help` pour plus d'infos_
 """
@@ -128,7 +133,7 @@ Le bot utilise Perplexity AI pour analyser le sentiment crypto (BULLISH/BEARISH/
 
 **Exemple de résultat :**
 🚀 **BULLISH** (89%)
-💡 "Bitcoin montre une forte dynamique hausssière avec l'approbation des ETF..."
+💡 "Bitcoin montre une forte dynamique hausssère avec l'approbation des ETF..."
 
 ━━━━━━━━━━━━━━━━━━
 💼 **2. GESTION DE PORTFOLIO**
@@ -147,17 +152,30 @@ Le bot utilise Perplexity AI pour analyser le sentiment crypto (BULLISH/BEARISH/
   • Valeur actuelle
   • P&L en $ et %
 
-**Supprimer une position :**
+**Supprimer une position (totale) :**
 `/remove BTC`
 → Supprime complètement la position BTC
+
+**Supprimer une position (partielle) :**
+`/remove BTC 0.3`
+→ Retire 0.3 BTC, garde le reste
+
+**Vendre une position (avec tracking P&L) :**
+`/sell BTC 0.5 75000`
+→ Vend 0.5 BTC à $75,000
+→ Enregistre le P&L réalisé
+→ Garde la position restante si vente partielle
 
 **Résumé global :**
 `/summary`
 → Affiche ton P&L total sur tout le portfolio
+→ P&L réalisé vs non-réalisé
+→ Meilleur/pire performer
+→ Score diversification
 
 **Historique :**
 `/history`
-→ Les 5 dernières transactions (BUY/REMOVE)
+→ Les 5 dernières transactions (BUY/SELL/REMOVE)
 
 ━━━━━━━━━━━━━━━━━━
 🚀 **CRYPTOS DISPONIBLES**
@@ -312,54 +330,178 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"❌ Error adding position. Is {symbol} supported?", parse_mode='Markdown')
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove position (full or partial)."""
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
         return
 
     user_id = update.effective_user.id
-    if len(context.args) != 1:
-        await update.message.reply_text("⚠️ Usage: `/remove <symbol>`", parse_mode='Markdown')
+    
+    if len(context.args) < 1 or len(context.args) > 2:
+        await update.message.reply_text(
+            "⚠️ **Usage:** `/remove <symbol> [quantity]`\n\n"
+            "**Examples:**\n"
+            "`/remove BTC` - Remove all BTC\n"
+            "`/remove BTC 0.5` - Remove 0.5 BTC only",
+            parse_mode='Markdown'
+        )
         return
     
     symbol = context.args[0].upper()
+    quantity = None
+    
+    # Parse optional quantity
+    if len(context.args) == 2:
+        try:
+            quantity = float(context.args[1])
+            if quantity <= 0:
+                await update.message.reply_text("❌ Quantity must be positive.", parse_mode='Markdown')
+                return
+        except ValueError:
+            await update.message.reply_text("❌ Quantity must be a number.", parse_mode='Markdown')
+            return
+    
     try:
-        success = portfolio_manager.remove_position(user_id, symbol)
-        if success:
-            await update.message.reply_text(f"✅ `{symbol}` removed.", parse_mode='Markdown')
+        result = portfolio_manager.remove_position(user_id, symbol, quantity)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error")
+            await update.message.reply_text(f"⚠️ {error_msg}", parse_mode='Markdown')
+            return
+        
+        if result["action"] == "full_remove":
+            response = f"✅ **Position Removed**\n\n"
+            response += f"`{symbol}` fully removed from portfolio.\n"
+            response += f"Quantity removed: `{result['quantity_removed']:.8g}`"
         else:
-            await update.message.reply_text(f"⚠️ `{symbol}` not found in portfolio.", parse_mode='Markdown')
+            response = f"✅ **Partial Removal**\n\n"
+            response += f"**{symbol}**\n"
+            response += f"  • Removed: `{result['quantity_removed']:.8g}`\n"
+            response += f"  • Remaining: `{result['quantity_remaining']:.8g}`"
+        
+        await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ /remove {symbol} for user {user_id}")
+        
     except Exception as e:
         logger.error(f"❌ /remove error: {e}")
         await update.message.reply_text("❌ Error removing position.", parse_mode='Markdown')
 
-async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Sell position and record realized P&L."""
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
         return
 
-    """Show portfolio summary with total P&L."""
+    user_id = update.effective_user.id
+    
+    if len(context.args) != 3:
+        await update.message.reply_text(
+            "⚠️ **Usage:** `/sell <symbol> <quantity> <sell_price>`\n\n"
+            "**Example:** `/sell BTC 0.5 75000`\n"
+            "Sells 0.5 BTC at $75,000 and records realized P&L",
+            parse_mode='Markdown'
+        )
+        return
+    
+    symbol = context.args[0].upper()
+    
+    try:
+        quantity = float(context.args[1])
+        sell_price = float(context.args[2])
+    except ValueError:
+        await update.message.reply_text("❌ Quantity and price must be numbers.", parse_mode='Markdown')
+        return
+    
+    if quantity <= 0 or sell_price <= 0:
+        await update.message.reply_text("❌ Values must be positive.", parse_mode='Markdown')
+        return
+    
+    try:
+        result = portfolio_manager.sell_position(user_id, symbol, quantity, sell_price)
+        
+        if not result["success"]:
+            error_msg = result.get("error", "Unknown error")
+            await update.message.reply_text(f"⚠️ {error_msg}", parse_mode='Markdown')
+            return
+        
+        pnl = result["pnl_realized"]
+        pnl_emoji = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "⚪")
+        
+        response = f"{pnl_emoji} **SALE EXECUTED**\n\n"
+        response += f"**{symbol}**\n"
+        response += f"  • Quantity sold: `{result['quantity_sold']:.8g}`\n"
+        response += f"  • Buy price: `{format_price(result['buy_price'])}`\n"
+        response += f"  • Sell price: `{format_price(result['sell_price'])}`\n"
+        response += f"  • **P&L Realized: `{pnl:+,.2f} USD ({result['pnl_percent']:+.2f}%)`**\n"
+        
+        if result["quantity_remaining"] > 0:
+            response += f"\nℹ️ Remaining position: `{result['quantity_remaining']:.8g} {symbol}`"
+        else:
+            response += f"\n✅ Position fully closed"
+        
+        await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ /sell {symbol} for user {user_id}: P&L {pnl:+.2f}")
+        
+    except Exception as e:
+        logger.error(f"❌ /sell error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error executing sale.", parse_mode='Markdown')
+
+async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show enriched portfolio summary with realized/unrealized P&L."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        return
+
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "User"
     
     try:
-        portfolio = portfolio_manager.get_portfolio_with_prices(user_id, username)
-        if not portfolio["positions"]:
-            await update.message.reply_text("📊 **Portfolio Empty**\n\nUse `/add` to start.", parse_mode='Markdown')
+        summary = portfolio_manager.get_enriched_summary(user_id, username)
+        
+        if summary["num_positions"] == 0:
+            await update.message.reply_text(
+                "📊 **Portfolio Empty**\n\nUse `/add` to start.",
+                parse_mode='Markdown'
+            )
             return
         
-        total_pnl = portfolio["total_pnl_usd"]
-        total_pnl_pct = portfolio["total_pnl_percent"]
+        total_pnl = summary["total_pnl"]
         overall_emoji = "🚀" if total_pnl > 0 else "📉"
         
-        response = f"{overall_emoji} **Portfolio Summary**\n"
-        response += f"━━━━━━━━━━━━━━━━━━\n"
-        response += f"**💰 Total P&L: `{total_pnl:+,.2f} USD ({total_pnl_pct:+.2f}%)`**\n"
-        response += f"• Invested: `{format_price(portfolio['total_invested'])}`\n"
-        response += f"• Current: `{format_price(portfolio['total_current_value'])}`"
+        response = f"{overall_emoji} **PORTFOLIO ANALYTICS**\n"
+        response += f"\n━━━━━━━━━━━━━━━━━━\n"
+        response += f"📊 **GLOBAL PERFORMANCE**\n"
+        response += f"━━━━━━━━━━━━━━━━━━\n\n"
+        response += f"💰 **Total P&L: `{total_pnl:+,.2f} USD`**\n"
+        response += f"  • Unrealized: `{summary['unrealized_pnl']:+,.2f} USD ({summary['unrealized_pnl_percent']:+.2f}%)`\n"
+        response += f"  • Realized: `{summary['realized_pnl']:+,.2f} USD`\n\n"
+        response += f"💵 **Capital:**\n"
+        response += f"  • Invested: `{format_price(summary['total_invested'])}`\n"
+        response += f"  • Current value: `{format_price(summary['total_current_value'])}`\n"
+        
+        # Best/worst performers
+        if summary["best_performer"]:
+            best = summary["best_performer"]
+            worst = summary["worst_performer"]
+            response += f"\n🏆 **Best performer:** `{best['symbol']}` ({best['pnl_percent']:+.2f}%)\n"
+            response += f"📉 **Worst performer:** `{worst['symbol']}` ({worst['pnl_percent']:+.2f}%)\n"
+        
+        # Diversification
+        div_score = summary["diversification_score"]
+        div_emoji = "🟢" if div_score >= 80 else ("🟡" if div_score >= 50 else "🔴")
+        response += f"\n{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)\n"
+        
+        response += f"\n_Use `/portfolio` for detailed breakdown_"
         
         await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ /summary sent to {user_id}")
+        
     except Exception as e:
         logger.error(f"❌ /summary error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error generating summary.", parse_mode='Markdown')
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -376,7 +518,19 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         response = "📃 **Last 5 Transactions**\n"
         for tx in transactions:
-            response += f"\n{tx['action']} `{tx['symbol']}`: {tx['quantity']} @ {format_price(tx['price'])}"
+            action_emoji = {
+                "BUY": "🟢",
+                "SELL": "🔵",
+                "REMOVE": "❌",
+                "PARTIAL_REMOVE": "⚠️"
+            }.get(tx['action'], "🔹")
+            
+            response += f"\n{action_emoji} {tx['action']} `{tx['symbol']}`: {tx['quantity']:.8g} @ {format_price(tx['price'])}"
+            
+            # Show P&L for sells
+            if 'pnl' in tx:
+                pnl_emoji = "🟢" if tx['pnl'] > 0 else "🔴"
+                response += f" {pnl_emoji} P&L: `{tx['pnl']:+,.2f}`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
     except Exception as e:
@@ -489,6 +643,7 @@ async def setup_application():
     application.add_handler(CommandHandler("portfolio", portfolio_command))
     application.add_handler(CommandHandler("add", add_command))
     application.add_handler(CommandHandler("remove", remove_command))
+    application.add_handler(CommandHandler("sell", sell_command))
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("history", history_command))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
