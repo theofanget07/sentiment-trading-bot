@@ -1,78 +1,100 @@
 #!/usr/bin/env python3
 """
-Portfolio Manager - JSON-based storage for user crypto portfolios.
+Portfolio Manager - PostgreSQL-based storage for user crypto portfolios.
 Supports positions tracking, transaction history, P&L calculations with real-time prices.
 """
-import json
-import os
 from datetime import datetime
 from typing import Dict, List, Optional
 import logging
+from sqlalchemy.orm import Session
 
 try:
+    from backend.database import SessionLocal
+    from backend.models import User, PortfolioPosition, Transaction, Recommendation
     from backend.crypto_prices import get_crypto_price, get_multiple_prices, calculate_pnl, format_price
 except ImportError:
+    from database import SessionLocal
+    from models import User, PortfolioPosition, Transaction, Recommendation
     from crypto_prices import get_crypto_price, get_multiple_prices, calculate_pnl, format_price
 
 logger = logging.getLogger(__name__)
 
-DATA_DIR = os.path.join(os.path.dirname(__file__), 'user_data')
-PORTFOLIOS_FILE = os.path.join(DATA_DIR, 'portfolios.json')
-TRANSACTIONS_FILE = os.path.join(DATA_DIR, 'transactions.json')
-RECOMMENDATIONS_FILE = os.path.join(DATA_DIR, 'recommendations.json')
-
-# Ensure data directory exists
-os.makedirs(DATA_DIR, exist_ok=True)
-
 class PortfolioManager:
-    """Manage user portfolios using JSON file storage."""
+    """
+    Manage user portfolios using PostgreSQL database.
+    Thread-safe with session management.
+    """
     
-    def __init__(self):
-        """Initialize portfolio manager and create files if needed."""
-        self._ensure_files_exist()
+    def _get_session(self) -> Session:
+        """Get new database session."""
+        return SessionLocal()
     
-    def _ensure_files_exist(self):
-        """Create JSON files if they don't exist."""
-        for filepath in [PORTFOLIOS_FILE, TRANSACTIONS_FILE, RECOMMENDATIONS_FILE]:
-            if not os.path.exists(filepath):
-                with open(filepath, 'w') as f:
-                    json.dump({}, f)
-                logger.info(f"✅ Created {os.path.basename(filepath)}")
-    
-    def _load_json(self, filepath: str) -> Dict:
-        """Load JSON file."""
-        try:
-            with open(filepath, 'r') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
-    
-    def _save_json(self, filepath: str, data: Dict):
-        """Save data to JSON file."""
-        with open(filepath, 'w') as f:
-            json.dump(data, f, indent=2)
+    def _get_or_create_user(self, db: Session, user_id: int, username: str = None) -> User:
+        """Get existing user or create new one."""
+        user = db.query(User).filter(User.telegram_id == user_id).first()
+        
+        if not user:
+            user = User(
+                telegram_id=user_id,
+                username=username or f"user_{user_id}"
+            )
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+            logger.info(f"✅ Created new user: {user_id}")
+        else:
+            # Update last_active
+            user.last_active = datetime.utcnow()
+            db.commit()
+        
+        return user
     
     # Portfolio operations
     
     def get_portfolio(self, user_id: int, username: str = None) -> Dict:
-        """Get user's portfolio."""
-        portfolios = self._load_json(PORTFOLIOS_FILE)
-        user_key = str(user_id)
+        """
+        Get user's portfolio (basic, without real-time prices).
         
-        if user_key not in portfolios:
-            # Create empty portfolio
-            portfolios[user_key] = {
-                "username": username or f"user_{user_id}",
-                "positions": {},
-                "total_value_usd": 0.0,
-                "created_at": datetime.utcnow().isoformat() + "Z"
+        Returns:
+            {
+                "username": str,
+                "positions": {"BTC": {"quantity": float, "avg_price": float}, ...},
+                "total_invested": float,
+                "created_at": str
             }
-            self._save_json(PORTFOLIOS_FILE, portfolios)
+        """
+        db = self._get_session()
+        try:
+            user = self._get_or_create_user(db, user_id, username)
+            
+            # Get all positions
+            positions = db.query(PortfolioPosition).filter(
+                PortfolioPosition.user_id == user.id
+            ).all()
+            
+            portfolio_dict = {}
+            total_invested = 0.0
+            
+            for pos in positions:
+                portfolio_dict[pos.symbol] = {
+                    "quantity": pos.quantity,
+                    "avg_price": pos.avg_price
+                }
+                total_invested += pos.total_invested
+            
+            return {
+                "username": user.username,
+                "positions": portfolio_dict,
+                "total_invested": round(total_invested, 2),
+                "created_at": user.created_at.isoformat() + "Z"
+            }
         
-        return portfolios[user_key]
+        finally:
+            db.close()
     
     def get_portfolio_with_prices(self, user_id: int, username: str = None) -> Dict:
-        """Get user's portfolio with current market prices and P&L calculations.
+        """
+        Get user's portfolio with current market prices and P&L calculations.
         
         Returns:
             {
@@ -82,7 +104,8 @@ class PortfolioManager:
                         "quantity": float,
                         "avg_price": float,
                         "current_price": float,
-                        "total_value": float,
+                        "invested_value": float,
+                        "current_value": float,
                         "pnl_usd": float,
                         "pnl_percent": float
                     }, ...
@@ -93,287 +116,380 @@ class PortfolioManager:
                 "total_pnl_percent": float
             }
         """
-        portfolio = self.get_portfolio(user_id, username)
-        
-        if not portfolio["positions"]:
+        db = self._get_session()
+        try:
+            user = self._get_or_create_user(db, user_id, username)
+            
+            # Get all positions
+            positions = db.query(PortfolioPosition).filter(
+                PortfolioPosition.user_id == user.id
+            ).all()
+            
+            if not positions:
+                return {
+                    "username": user.username,
+                    "positions": {},
+                    "total_invested": 0.0,
+                    "total_current_value": 0.0,
+                    "total_pnl_usd": 0.0,
+                    "total_pnl_percent": 0.0
+                }
+            
+            # Get symbols and fetch current prices
+            symbols = [pos.symbol for pos in positions]
+            current_prices = get_multiple_prices(symbols)
+            
+            # Calculate P&L for each position
+            enriched_positions = {}
+            total_invested = 0.0
+            total_current_value = 0.0
+            
+            for pos in positions:
+                current_price = current_prices.get(pos.symbol)
+                
+                # Skip if price not available
+                if current_price is None:
+                    logger.warning(f"No price available for {pos.symbol}")
+                    current_price = pos.avg_price  # Fallback
+                
+                invested = pos.quantity * pos.avg_price
+                current_value = pos.quantity * current_price
+                pnl_usd = current_value - invested
+                pnl_percent = calculate_pnl(pos.avg_price, current_price)
+                
+                enriched_positions[pos.symbol] = {
+                    "quantity": pos.quantity,
+                    "avg_price": pos.avg_price,
+                    "current_price": current_price,
+                    "invested_value": invested,
+                    "current_value": current_value,
+                    "pnl_usd": pnl_usd,
+                    "pnl_percent": pnl_percent
+                }
+                
+                total_invested += invested
+                total_current_value += current_value
+            
+            total_pnl_usd = total_current_value - total_invested
+            total_pnl_percent = (total_pnl_usd / total_invested * 100) if total_invested > 0 else 0.0
+            
             return {
-                "username": portfolio.get("username", "User"),
-                "positions": {},
-                "total_invested": 0.0,
-                "total_current_value": 0.0,
-                "total_pnl_usd": 0.0,
-                "total_pnl_percent": 0.0
+                "username": user.username,
+                "positions": enriched_positions,
+                "total_invested": total_invested,
+                "total_current_value": total_current_value,
+                "total_pnl_usd": total_pnl_usd,
+                "total_pnl_percent": total_pnl_percent
             }
         
-        # Get all symbols
-        symbols = list(portfolio["positions"].keys())
-        
-        # Fetch current prices for all positions
-        current_prices = get_multiple_prices(symbols)
-        
-        # Calculate P&L for each position
-        enriched_positions = {}
-        total_invested = 0.0
-        total_current_value = 0.0
-        
-        for symbol, pos in portfolio["positions"].items():
-            qty = pos["quantity"]
-            avg_price = pos["avg_price"]
-            current_price = current_prices.get(symbol)
-            
-            # Skip if price not available
-            if current_price is None:
-                logger.warning(f"No price available for {symbol}")
-                current_price = avg_price  # Fallback to avg price
-            
-            invested = qty * avg_price
-            current_value = qty * current_price
-            pnl_usd = current_value - invested
-            pnl_percent = calculate_pnl(avg_price, current_price)
-            
-            enriched_positions[symbol] = {
-                "quantity": qty,
-                "avg_price": avg_price,
-                "current_price": current_price,
-                "invested_value": invested,
-                "current_value": current_value,
-                "pnl_usd": pnl_usd,
-                "pnl_percent": pnl_percent
-            }
-            
-            total_invested += invested
-            total_current_value += current_value
-        
-        total_pnl_usd = total_current_value - total_invested
-        total_pnl_percent = (total_pnl_usd / total_invested * 100) if total_invested > 0 else 0.0
-        
-        return {
-            "username": portfolio.get("username", "User"),
-            "positions": enriched_positions,
-            "total_invested": total_invested,
-            "total_current_value": total_current_value,
-            "total_pnl_usd": total_pnl_usd,
-            "total_pnl_percent": total_pnl_percent
-        }
+        finally:
+            db.close()
     
     def add_position(self, user_id: int, symbol: str, quantity: float, price: float, username: str = None) -> Dict:
-        """Add or update a position (accumulate if exists).
+        """
+        Add or update a position (accumulate if exists).
         
         Returns:
             dict with operation result
         """
-        portfolios = self._load_json(PORTFOLIOS_FILE)
-        user_key = str(user_id)
-        
-        if user_key not in portfolios:
-            portfolios[user_key] = {
-                "username": username or f"user_{user_id}",
-                "positions": {},
-                "total_value_usd": 0.0,
-                "created_at": datetime.utcnow().isoformat() + "Z"
-            }
-        
-        symbol = symbol.upper()
-        
-        # Check if position exists
-        if symbol in portfolios[user_key]["positions"]:
-            # Accumulate: calculate new average price
-            existing = portfolios[user_key]["positions"][symbol]
-            old_qty = existing["quantity"]
-            old_avg = existing["avg_price"]
+        db = self._get_session()
+        try:
+            user = self._get_or_create_user(db, user_id, username)
+            symbol = symbol.upper()
             
-            new_qty = old_qty + quantity
-            new_avg = (old_qty * old_avg + quantity * price) / new_qty
+            # Check if position exists
+            position = db.query(PortfolioPosition).filter(
+                PortfolioPosition.user_id == user.id,
+                PortfolioPosition.symbol == symbol
+            ).first()
             
-            portfolios[user_key]["positions"][symbol] = {
-                "quantity": new_qty,
-                "avg_price": round(new_avg, 2),
-                "last_updated": datetime.utcnow().isoformat() + "Z"
-            }
+            if position:
+                # Accumulate: calculate new average price
+                old_qty = position.quantity
+                old_avg = position.avg_price
+                
+                new_qty = old_qty + quantity
+                new_avg = (old_qty * old_avg + quantity * price) / new_qty
+                
+                position.quantity = new_qty
+                position.avg_price = round(new_avg, 2)
+                position.updated_at = datetime.utcnow()
+                
+                action = "updated"
+            else:
+                # New position
+                position = PortfolioPosition(
+                    user_id=user.id,
+                    symbol=symbol,
+                    quantity=quantity,
+                    avg_price=price
+                )
+                db.add(position)
+                action = "created"
             
-            action = "updated"
-        else:
-            # New position
-            portfolios[user_key]["positions"][symbol] = {
-                "quantity": quantity,
-                "avg_price": price,
-                "last_updated": datetime.utcnow().isoformat() + "Z"
-            }
-            action = "created"
-        
-        # Recalculate total value
-        total_value = sum(
-            pos["quantity"] * pos["avg_price"]
-            for pos in portfolios[user_key]["positions"].values()
-        )
-        portfolios[user_key]["total_value_usd"] = round(total_value, 2)
-        
-        self._save_json(PORTFOLIOS_FILE, portfolios)
-        
-        # Add transaction record
-        self.add_transaction(
-            user_id=user_id,
-            symbol=symbol,
-            action="BUY",
-            quantity=quantity,
-            price=price,
-            source="manual"
-        )
-        
-        logger.info(f"✅ {action.capitalize()} {symbol} position for user {user_id}")
-        
-        return {
-            "action": action,
-            "symbol": symbol,
-            "quantity": portfolios[user_key]["positions"][symbol]["quantity"],
-            "avg_price": portfolios[user_key]["positions"][symbol]["avg_price"]
-        }
-    
-    def remove_position(self, user_id: int, symbol: str) -> bool:
-        """Delete a position entirely.
-        
-        Returns:
-            True if deleted, False if not found
-        """
-        portfolios = self._load_json(PORTFOLIOS_FILE)
-        user_key = str(user_id)
-        symbol = symbol.upper()
-        
-        if user_key in portfolios and symbol in portfolios[user_key]["positions"]:
-            # Get position details before deletion
-            pos = portfolios[user_key]["positions"][symbol]
+            db.commit()
+            db.refresh(position)
             
             # Add transaction record
             self.add_transaction(
                 user_id=user_id,
                 symbol=symbol,
+                action="BUY",
+                quantity=quantity,
+                price=price,
+                source="manual"
+            )
+            
+            logger.info(f"✅ {action.capitalize()} {symbol} position for user {user_id}")
+            
+            return {
+                "action": action,
+                "symbol": symbol,
+                "quantity": position.quantity,
+                "avg_price": position.avg_price
+            }
+        
+        finally:
+            db.close()
+    
+    def remove_position(self, user_id: int, symbol: str) -> bool:
+        """
+        Delete a position entirely.
+        
+        Returns:
+            True if deleted, False if not found
+        """
+        db = self._get_session()
+        try:
+            user = db.query(User).filter(User.telegram_id == user_id).first()
+            if not user:
+                return False
+            
+            symbol = symbol.upper()
+            position = db.query(PortfolioPosition).filter(
+                PortfolioPosition.user_id == user.id,
+                PortfolioPosition.symbol == symbol
+            ).first()
+            
+            if not position:
+                return False
+            
+            # Add transaction record before deletion
+            self.add_transaction(
+                user_id=user_id,
+                symbol=symbol,
                 action="REMOVE",
-                quantity=pos["quantity"],
-                price=pos["avg_price"],
+                quantity=position.quantity,
+                price=position.avg_price,
                 source="manual"
             )
             
             # Delete position
-            del portfolios[user_key]["positions"][symbol]
+            db.delete(position)
+            db.commit()
             
-            # Recalculate total value
-            total_value = sum(
-                p["quantity"] * p["avg_price"]
-                for p in portfolios[user_key]["positions"].values()
-            )
-            portfolios[user_key]["total_value_usd"] = round(total_value, 2)
-            
-            self._save_json(PORTFOLIOS_FILE, portfolios)
             logger.info(f"✅ Deleted {symbol} position for user {user_id}")
             return True
         
-        return False
+        finally:
+            db.close()
     
     # Transaction operations
     
     def add_transaction(self, user_id: int, symbol: str, action: str, 
                        quantity: float, price: float, sentiment: str = None, 
-                       confidence: int = None, source: str = "manual"):
-        """Add a transaction to history."""
-        transactions = self._load_json(TRANSACTIONS_FILE)
-        user_key = str(user_id)
+                       confidence: int = None, source: str = "manual") -> int:
+        """
+        Add a transaction to history.
         
-        if user_key not in transactions:
-            transactions[user_key] = []
+        Returns:
+            transaction.id
+        """
+        db = self._get_session()
+        try:
+            user = self._get_or_create_user(db, user_id)
+            
+            transaction = Transaction(
+                user_id=user.id,
+                symbol=symbol.upper(),
+                action=action.upper(),
+                quantity=quantity,
+                price=price,
+                total_usd=round(quantity * price, 2),
+                source=source,
+                sentiment=sentiment,
+                confidence=confidence
+            )
+            
+            db.add(transaction)
+            db.commit()
+            db.refresh(transaction)
+            
+            logger.info(f"✅ Added transaction {transaction.id} for user {user_id}")
+            return transaction.id
         
-        tx_id = f"tx_{len(transactions[user_key]) + 1:04d}"
-        transaction = {
-            "id": tx_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "symbol": symbol,
-            "action": action.upper(),
-            "quantity": quantity,
-            "price": price,
-            "total_usd": round(quantity * price, 2),
-            "source": source
-        }
-        
-        if sentiment:
-            transaction["sentiment"] = sentiment
-        if confidence:
-            transaction["confidence"] = confidence
-        
-        transactions[user_key].append(transaction)
-        self._save_json(TRANSACTIONS_FILE, transactions)
-        logger.info(f"✅ Added transaction {tx_id} for user {user_id}")
-        
-        return tx_id
+        finally:
+            db.close()
     
     def get_transactions(self, user_id: int, limit: int = 50) -> List[Dict]:
-        """Get user's transaction history."""
-        transactions = self._load_json(TRANSACTIONS_FILE)
-        user_key = str(user_id)
+        """
+        Get user's transaction history.
         
-        if user_key not in transactions:
-            return []
+        Returns:
+            List of transaction dicts (most recent first)
+        """
+        db = self._get_session()
+        try:
+            user = db.query(User).filter(User.telegram_id == user_id).first()
+            if not user:
+                return []
+            
+            transactions = db.query(Transaction).filter(
+                Transaction.user_id == user.id
+            ).order_by(Transaction.timestamp.desc()).limit(limit).all()
+            
+            result = []
+            for tx in transactions:
+                tx_dict = {
+                    "id": tx.id,
+                    "timestamp": tx.timestamp.isoformat() + "Z",
+                    "symbol": tx.symbol,
+                    "action": tx.action,
+                    "quantity": tx.quantity,
+                    "price": tx.price,
+                    "total_usd": tx.total_usd,
+                    "source": tx.source
+                }
+                
+                if tx.sentiment:
+                    tx_dict["sentiment"] = tx.sentiment
+                if tx.confidence:
+                    tx_dict["confidence"] = tx.confidence
+                
+                result.append(tx_dict)
+            
+            return result
         
-        # Return most recent first
-        return list(reversed(transactions[user_key]))[:limit]
+        finally:
+            db.close()
     
     # Recommendation operations
     
     def add_recommendation(self, user_id: int, symbol: str, action: str,
-                          reasoning: str, sentiment: str, confidence: int):
-        """Add AI recommendation."""
-        recommendations = self._load_json(RECOMMENDATIONS_FILE)
-        user_key = str(user_id)
+                          reasoning: str, sentiment: str, confidence: int) -> int:
+        """
+        Add AI recommendation.
         
-        if user_key not in recommendations:
-            recommendations[user_key] = []
+        Returns:
+            recommendation.id
+        """
+        db = self._get_session()
+        try:
+            user = self._get_or_create_user(db, user_id)
+            
+            recommendation = Recommendation(
+                user_id=user.id,
+                symbol=symbol.upper(),
+                action=action.upper(),
+                reasoning=reasoning,
+                sentiment=sentiment,
+                confidence=confidence
+            )
+            
+            db.add(recommendation)
+            db.commit()
+            db.refresh(recommendation)
+            
+            logger.info(f"✅ Added recommendation {recommendation.id} for user {user_id}")
+            return recommendation.id
         
-        rec_id = f"rec_{len(recommendations[user_key]) + 1:04d}"
-        recommendation = {
-            "id": rec_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "symbol": symbol,
-            "action": action.upper(),
-            "reasoning": reasoning,
-            "sentiment": sentiment,
-            "confidence": confidence,
-            "executed": False
-        }
-        
-        recommendations[user_key].append(recommendation)
-        self._save_json(RECOMMENDATIONS_FILE, recommendations)
-        logger.info(f"✅ Added recommendation {rec_id} for user {user_id}")
-        
-        return rec_id
+        finally:
+            db.close()
     
     def get_recommendations(self, user_id: int, limit: int = 20) -> List[Dict]:
-        """Get user's recommendations."""
-        recommendations = self._load_json(RECOMMENDATIONS_FILE)
-        user_key = str(user_id)
+        """
+        Get user's recommendations.
         
-        if user_key not in recommendations:
-            return []
-        
-        # Return most recent first
-        return list(reversed(recommendations[user_key]))[:limit]
-    
-    def mark_recommendation_executed(self, user_id: int, rec_id: str):
-        """Mark recommendation as executed."""
-        recommendations = self._load_json(RECOMMENDATIONS_FILE)
-        user_key = str(user_id)
-        
-        if user_key in recommendations:
-            for rec in recommendations[user_key]:
-                if rec["id"] == rec_id:
-                    rec["executed"] = True
-                    rec["executed_at"] = datetime.utcnow().isoformat() + "Z"
-                    break
+        Returns:
+            List of recommendation dicts (most recent first)
+        """
+        db = self._get_session()
+        try:
+            user = db.query(User).filter(User.telegram_id == user_id).first()
+            if not user:
+                return []
             
-            self._save_json(RECOMMENDATIONS_FILE, recommendations)
+            recommendations = db.query(Recommendation).filter(
+                Recommendation.user_id == user.id
+            ).order_by(Recommendation.timestamp.desc()).limit(limit).all()
+            
+            result = []
+            for rec in recommendations:
+                rec_dict = {
+                    "id": rec.id,
+                    "timestamp": rec.timestamp.isoformat() + "Z",
+                    "symbol": rec.symbol,
+                    "action": rec.action,
+                    "reasoning": rec.reasoning,
+                    "sentiment": rec.sentiment,
+                    "confidence": rec.confidence,
+                    "executed": rec.executed
+                }
+                
+                if rec.executed_at:
+                    rec_dict["executed_at"] = rec.executed_at.isoformat() + "Z"
+                
+                result.append(rec_dict)
+            
+            return result
+        
+        finally:
+            db.close()
+    
+    def mark_recommendation_executed(self, user_id: int, rec_id: int) -> bool:
+        """
+        Mark recommendation as executed.
+        
+        Returns:
+            True if marked, False if not found
+        """
+        db = self._get_session()
+        try:
+            user = db.query(User).filter(User.telegram_id == user_id).first()
+            if not user:
+                return False
+            
+            recommendation = db.query(Recommendation).filter(
+                Recommendation.id == rec_id,
+                Recommendation.user_id == user.id
+            ).first()
+            
+            if not recommendation:
+                return False
+            
+            recommendation.executed = True
+            recommendation.executed_at = datetime.utcnow()
+            db.commit()
+            
             logger.info(f"✅ Marked recommendation {rec_id} as executed")
+            return True
+        
+        finally:
+            db.close()
     
     # Backtest support
     
     def get_backtest_data(self, user_id: int) -> Dict:
-        """Get all data needed for backtesting."""
+        """
+        Get all data needed for backtesting.
+        
+        Returns:
+            {
+                "portfolio": dict,
+                "transactions": list,
+                "recommendations": list
+            }
+        """
         return {
             "portfolio": self.get_portfolio(user_id),
             "transactions": self.get_transactions(user_id, limit=1000),
