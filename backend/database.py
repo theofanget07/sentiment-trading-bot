@@ -14,11 +14,12 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Get DATABASE_URL from environment (Railway provides this)
-DATABASE_URL = os.getenv('DATABASE_URL')
+# Get DATABASE_URL from environment - prefer PUBLIC_URL for Railway
+# DATABASE_PUBLIC_URL works externally, DATABASE_URL is internal network only
+DATABASE_URL = os.getenv('DATABASE_PUBLIC_URL') or os.getenv('DATABASE_URL')
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable not set!")
+    raise ValueError("DATABASE_PUBLIC_URL or DATABASE_URL environment variable not set!")
 
 # Fix for SQLAlchemy 1.4+ (Railway uses postgres://, SQLAlchemy needs postgresql://)
 if DATABASE_URL.startswith('postgres://'):
@@ -26,13 +27,17 @@ if DATABASE_URL.startswith('postgres://'):
 
 logger.info(f"🗄️ Connecting to PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'local'}")
 
-# Create engine
+# Create engine with shorter timeout and better error handling
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,  # Test connections before using
-    pool_size=5,         # Max 5 connections
-    max_overflow=10,     # Allow up to 10 overflow connections
-    echo=False           # Set to True for SQL debugging
+    pool_pre_ping=True,      # Test connections before using
+    pool_size=5,             # Max 5 connections
+    max_overflow=10,         # Allow up to 10 overflow connections
+    echo=False,              # Set to True for SQL debugging
+    connect_args={
+        "connect_timeout": 10,  # 10 second timeout instead of 5 minutes
+        "options": "-c statement_timeout=30000"  # 30s query timeout
+    }
 )
 
 # Create session factory
@@ -69,13 +74,14 @@ async def init_db_async():
         # Run the blocking database operation in a thread pool
         loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, init_db)
-        logger.info("✅ Database tables ready (async init complete)")
+        logger.info("✅ PostgreSQL tables ready (async init complete)")
         return True
     except Exception as e:
-        logger.error(f"❌ Database initialization failed: {e}")
+        logger.error(f"❌ PostgreSQL initialization failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return False
+        # Re-raise exception to prevent bot from running without database
+        raise RuntimeError(f"PostgreSQL connection failed: {e}")
 
 def test_connection():
     """Test database connection."""
