@@ -37,6 +37,7 @@ except Exception as e:
 # user:{user_id}:profile -> {"user_id": int, "username": str}
 # user:{user_id}:positions:{symbol} -> {"quantity": float, "avg_price": float}
 # user:{user_id}:transactions -> [{"symbol": str, "quantity": float, ...}]
+# user:{user_id}:realized_pnl -> [{"symbol": str, "quantity_sold": float, "pnl_realized": float, ...}]
 
 def get_user_profile(user_id: int) -> Optional[Dict]:
     """Get user profile from Redis."""
@@ -142,6 +143,75 @@ def get_transactions(user_id: int, limit: int = 10) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error getting transactions: {e}")
         return []
+
+def add_realized_pnl(user_id: int, pnl_record: Dict) -> bool:
+    """Add a realized P&L record (from partial or full sell).
+    
+    Args:
+        pnl_record: {
+            "symbol": str,
+            "quantity_sold": float,
+            "buy_price": float,
+            "sell_price": float,
+            "pnl_realized": float,
+            "date": str (ISO format)
+        }
+    """
+    try:
+        data = redis_client.get(f"user:{user_id}:realized_pnl")
+        records = json.loads(data) if data else []
+        
+        # Add timestamp if not provided
+        if 'date' not in pnl_record:
+            pnl_record['date'] = datetime.utcnow().isoformat()
+        
+        records.append(pnl_record)
+        
+        # Keep last 100 records
+        if len(records) > 100:
+            records = records[-100:]
+        
+        redis_client.set(f"user:{user_id}:realized_pnl", json.dumps(records))
+        logger.info(f"✅ Realized P&L recorded: {pnl_record['symbol']} {pnl_record['pnl_realized']:+.2f} USD")
+        return True
+    except Exception as e:
+        logger.error(f"Error adding realized P&L: {e}")
+        return False
+
+def get_realized_pnl(user_id: int, symbol: str = None) -> List[Dict]:
+    """Get realized P&L records.
+    
+    Args:
+        user_id: User ID
+        symbol: Optional - filter by symbol. If None, returns all.
+    
+    Returns:
+        List of P&L records
+    """
+    try:
+        data = redis_client.get(f"user:{user_id}:realized_pnl")
+        records = json.loads(data) if data else []
+        
+        if symbol:
+            records = [r for r in records if r['symbol'] == symbol.upper()]
+        
+        return records
+    except Exception as e:
+        logger.error(f"Error getting realized P&L: {e}")
+        return []
+
+def get_total_realized_pnl(user_id: int) -> float:
+    """Calculate total realized P&L across all positions.
+    
+    Returns:
+        Total realized P&L in USD
+    """
+    try:
+        records = get_realized_pnl(user_id)
+        return sum(r.get('pnl_realized', 0) for r in records)
+    except Exception as e:
+        logger.error(f"Error calculating total realized P&L: {e}")
+        return 0.0
 
 def test_connection() -> bool:
     """Test Redis connection."""
