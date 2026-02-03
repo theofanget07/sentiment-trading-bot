@@ -489,7 +489,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "mode": "webhook", "storage": "postgresql+json_fallback", "features": ["sentiment", "portfolio", "pnl"]}
+    return {"status": "ok", "mode": "webhook", "storage": "postgresql", "features": ["sentiment", "portfolio", "pnl"]}
 
 # SIMPLIFIED WEBHOOK ENDPOINT (No dynamic path param)
 @app.post("/webhook")
@@ -559,28 +559,21 @@ async def setup_application():
         clean_webhook_url = WEBHOOK_URL.rstrip('/')
         webhook_endpoint = f"{clean_webhook_url}/webhook"
         
-        logger.info(f"🔗 Setting webhook to SIMPLIFIED URL: {webhook_endpoint}")
+        logger.info(f"🔗 Setting webhook to: {webhook_endpoint}")
         await application.bot.set_webhook(url=webhook_endpoint)
         logger.info("✅ Webhook configured")
     
-    logger.info("🤖 Bot ready with PostgreSQL + JSON fallback")
+    logger.info("🤖 Bot ready with PostgreSQL storage")
 
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
-    logger.info("🚀 FastAPI startup - PostgreSQL + JSON fallback mode")
+    logger.info("🚀 FastAPI startup - PostgreSQL mode")
     
-    # Create PostgreSQL tables asynchronously (non-blocking)
-    try:
-        logger.info("🔨 Initializing database tables (async)...")
-        success = await init_db_async()
-        if success:
-            logger.info("✅ PostgreSQL tables ready - portfolio will use database")
-        else:
-            logger.warning("⚠️ PostgreSQL init failed - falling back to JSON storage")
-    except Exception as e:
-        logger.warning(f"⚠️ Database initialization error: {e}")
-        logger.info("📁 Continuing with JSON storage fallback")
+    # Create PostgreSQL tables asynchronously - REQUIRED, no fallback
+    logger.info("🔨 Initializing PostgreSQL tables (required)...")
+    await init_db_async()  # Raises exception if fails
+    logger.info("✅ PostgreSQL ready - bot starting")
     
     await setup_application()
     logger.info("✅ Server ready")
