@@ -25,9 +25,12 @@ if not DATABASE_URL:
 if DATABASE_URL.startswith('postgres://'):
     DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
 
-logger.info(f"🗄️ Connecting to PostgreSQL: {DATABASE_URL.split('@')[1] if '@' in DATABASE_URL else 'local'}")
+# Log which URL is being used (masked for security)
+url_type = "PUBLIC" if os.getenv('DATABASE_PUBLIC_URL') else "PRIVATE"
+host_part = DATABASE_URL.split('@')[1].split('/')[0] if '@' in DATABASE_URL else 'unknown'
+logger.info(f"🗄️ Connecting to PostgreSQL ({url_type}): {host_part}")
 
-# Create engine with shorter timeout and better error handling
+# Create engine with LONGER timeout for Railway public proxy
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,      # Test connections before using
@@ -35,7 +38,7 @@ engine = create_engine(
     max_overflow=10,         # Allow up to 10 overflow connections
     echo=False,              # Set to True for SQL debugging
     connect_args={
-        "connect_timeout": 10,  # 10 second timeout instead of 5 minutes
+        "connect_timeout": 60,  # 60 seconds for Railway proxy (was 10)
         "options": "-c statement_timeout=30000"  # 30s query timeout
     }
 )
@@ -78,9 +81,10 @@ async def init_db_async():
         return True
     except Exception as e:
         logger.error(f"❌ PostgreSQL initialization failed: {e}")
+        logger.error(f"Connection type: {url_type}, Host: {host_part}")
         import traceback
         logger.error(traceback.format_exc())
-        # Re-raise exception to prevent bot from running without database
+        # Re-raise exception to signal failure (bot will still start in limited mode)
         raise RuntimeError(f"PostgreSQL connection failed: {e}")
 
 def test_connection():
