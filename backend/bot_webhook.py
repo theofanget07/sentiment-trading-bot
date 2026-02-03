@@ -21,20 +21,16 @@ DB_AVAILABLE = False
 # Fix: Use absolute import for Railway deployment
 try:
     from backend.portfolio_manager import portfolio_manager
+    from backend import redis_storage
 except ImportError:
     # Fallback for local development
     from portfolio_manager import portfolio_manager
+    import redis_storage
 
 try:
     from backend.crypto_prices import format_price, get_crypto_price
 except ImportError:
     from crypto_prices import format_price, get_crypto_price
-
-# Import ASYNC database init function
-try:
-    from backend.database import init_db_async
-except ImportError:
-    from database import init_db_async
 
 try:
     from article_scraper import extract_article, extract_urls
@@ -427,15 +423,20 @@ async def setup_application():
 @app.on_event("startup")
 async def startup():
     global DB_AVAILABLE
-    logger.info("🚀 FastAPI startup - Robust Mode")
+    logger.info("🚀 FastAPI startup - Redis Mode")
     
     try:
-        logger.info("🔨 Attempting DB connection...")
-        await init_db_async()
-        DB_AVAILABLE = True
-        logger.info("✅ PostgreSQL connected successfully!")
+        logger.info("🔥 Testing Redis connection...")
+        redis_connected = redis_storage.test_connection()
+        
+        if redis_connected:
+            DB_AVAILABLE = True
+            logger.info("✅ Redis connected successfully!")
+        else:
+            DB_AVAILABLE = False
+            logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio)")
     except Exception as e:
-        logger.error(f"⚠️ Database connection failed: {e}")
+        logger.error(f"⚠️ Redis connection failed: {e}")
         logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio)")
         DB_AVAILABLE = False
     
