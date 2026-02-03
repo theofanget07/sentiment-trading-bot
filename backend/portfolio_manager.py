@@ -151,6 +151,60 @@ class PortfolioManager:
             "total_pnl_percent": round(total_pnl_percent, 2)
         }
     
+    def get_enriched_summary(self, user_id: int, username: str = None) -> Dict:
+        """
+        Get enriched portfolio summary with realized/unrealized P&L breakdown.
+        
+        Returns:
+            {
+                "username": str,
+                "num_positions": int,
+                "total_invested": float,
+                "total_current_value": float,
+                "unrealized_pnl": float,
+                "unrealized_pnl_percent": float,
+                "realized_pnl": float,
+                "total_pnl": float,
+                "best_performer": {"symbol": str, "pnl_percent": float},
+                "worst_performer": {"symbol": str, "pnl_percent": float},
+                "diversification_score": float,
+                "positions": dict
+            }
+        """
+        portfolio = self.get_portfolio_with_prices(user_id, username)
+        realized_pnl = storage.get_total_realized_pnl(user_id)
+        
+        # Find best/worst performers
+        best = None
+        worst = None
+        
+        if portfolio["positions"]:
+            for symbol, pos in portfolio["positions"].items():
+                pnl_pct = pos["pnl_percent"]
+                if best is None or pnl_pct > best["pnl_percent"]:
+                    best = {"symbol": symbol, "pnl_percent": pnl_pct}
+                if worst is None or pnl_pct < worst["pnl_percent"]:
+                    worst = {"symbol": symbol, "pnl_percent": pnl_pct}
+        
+        # Diversification score (simple: num positions / max supported)
+        num_positions = len(portfolio["positions"])
+        diversification = min(num_positions / 5, 1.0) * 100  # 5+ positions = 100%
+        
+        return {
+            "username": portfolio["username"],
+            "num_positions": num_positions,
+            "total_invested": portfolio["total_invested"],
+            "total_current_value": portfolio["total_current_value"],
+            "unrealized_pnl": portfolio["total_pnl_usd"],
+            "unrealized_pnl_percent": portfolio["total_pnl_percent"],
+            "realized_pnl": round(realized_pnl, 2),
+            "total_pnl": round(portfolio["total_pnl_usd"] + realized_pnl, 2),
+            "best_performer": best,
+            "worst_performer": worst,
+            "diversification_score": round(diversification, 1),
+            "positions": portfolio["positions"]
+        }
+    
     def add_position(self, user_id: int, symbol: str, quantity: float, price: float, username: str = None) -> Dict:
         """
         Add or update a position (accumulate if exists).
@@ -202,34 +256,186 @@ class PortfolioManager:
             "avg_price": final_avg
         }
     
-    def remove_position(self, user_id: int, symbol: str) -> bool:
+    def remove_position(self, user_id: int, symbol: str, quantity: float = None) -> Dict:
         """
-        Delete a position entirely.
+        Remove a position entirely or partially.
+        
+        Args:
+            user_id: User ID
+            symbol: Crypto symbol
+            quantity: Optional - amount to remove. If None, removes 100%.
         
         Returns:
-            True if deleted, False if not found
+            {
+                "success": bool,
+                "action": "partial_remove" or "full_remove",
+                "quantity_removed": float,
+                "quantity_remaining": float or 0
+            }
         """
         symbol = symbol.upper()
         existing_pos = storage.get_position(user_id, symbol)
         
         if not existing_pos:
-            return False
+            return {
+                "success": False,
+                "error": "Position not found"
+            }
         
-        # Add transaction record before deletion
+        current_qty = existing_pos['quantity']
+        avg_price = existing_pos['avg_price']
+        
+        # Full removal if quantity not specified
+        if quantity is None or quantity >= current_qty:
+            # Add transaction record before deletion
+            storage.add_transaction(user_id, {
+                "symbol": symbol,
+                "action": "REMOVE",
+                "quantity": current_qty,
+                "price": avg_price,
+                "total_usd": round(current_qty * avg_price, 2),
+                "source": "manual"
+            })
+            
+            storage.delete_position(user_id, symbol)
+            logger.info(f"✅ Full removal: {symbol} for user {user_id}")
+            
+            return {
+                "success": True,
+                "action": "full_remove",
+                "quantity_removed": current_qty,
+                "quantity_remaining": 0
+            }
+        
+        # Partial removal
+        if quantity <= 0:
+            return {
+                "success": False,
+                "error": "Quantity must be positive"
+            }
+        
+        if quantity > current_qty:
+            return {
+                "success": False,
+                "error": f"Cannot remove {quantity} (only have {current_qty})"
+            }
+        
+        new_qty = current_qty - quantity
+        storage.set_position(user_id, symbol, new_qty, avg_price)
+        
+        # Add transaction
         storage.add_transaction(user_id, {
             "symbol": symbol,
-            "action": "REMOVE",
-            "quantity": existing_pos['quantity'],
-            "price": existing_pos['avg_price'],
-            "total_usd": round(existing_pos['quantity'] * existing_pos['avg_price'], 2),
+            "action": "PARTIAL_REMOVE",
+            "quantity": quantity,
+            "price": avg_price,
+            "total_usd": round(quantity * avg_price, 2),
             "source": "manual"
         })
         
-        # Delete position
-        storage.delete_position(user_id, symbol)
+        logger.info(f"✅ Partial removal: {quantity} {symbol} for user {user_id}")
         
-        logger.info(f"✅ Deleted {symbol} position for user {user_id}")
-        return True
+        return {
+            "success": True,
+            "action": "partial_remove",
+            "quantity_removed": quantity,
+            "quantity_remaining": new_qty
+        }
+    
+    def sell_position(self, user_id: int, symbol: str, quantity: float, sell_price: float) -> Dict:
+        """
+        Sell a position (partial or full) and record realized P&L.
+        
+        Args:
+            user_id: User ID
+            symbol: Crypto symbol
+            quantity: Amount to sell
+            sell_price: Price at which selling
+        
+        Returns:
+            {
+                "success": bool,
+                "symbol": str,
+                "quantity_sold": float,
+                "buy_price": float,
+                "sell_price": float,
+                "pnl_realized": float,
+                "pnl_percent": float,
+                "quantity_remaining": float
+            }
+        """
+        symbol = symbol.upper()
+        existing_pos = storage.get_position(user_id, symbol)
+        
+        if not existing_pos:
+            return {
+                "success": False,
+                "error": "Position not found"
+            }
+        
+        current_qty = existing_pos['quantity']
+        buy_price = existing_pos['avg_price']
+        
+        if quantity <= 0:
+            return {
+                "success": False,
+                "error": "Quantity must be positive"
+            }
+        
+        if quantity > current_qty:
+            return {
+                "success": False,
+                "error": f"Cannot sell {quantity} (only have {current_qty})"
+            }
+        
+        # Calculate P&L
+        pnl_realized = (sell_price - buy_price) * quantity
+        pnl_percent = calculate_pnl(buy_price, sell_price)
+        
+        # Record realized P&L
+        storage.add_realized_pnl(user_id, {
+            "symbol": symbol,
+            "quantity_sold": quantity,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "pnl_realized": round(pnl_realized, 2),
+            "pnl_percent": round(pnl_percent, 2)
+        })
+        
+        # Update or remove position
+        if quantity >= current_qty:
+            # Full sell
+            storage.delete_position(user_id, symbol)
+            remaining = 0
+        else:
+            # Partial sell - keep same avg price
+            new_qty = current_qty - quantity
+            storage.set_position(user_id, symbol, new_qty, buy_price)
+            remaining = new_qty
+        
+        # Add transaction
+        storage.add_transaction(user_id, {
+            "symbol": symbol,
+            "action": "SELL",
+            "quantity": quantity,
+            "price": sell_price,
+            "total_usd": round(quantity * sell_price, 2),
+            "pnl": round(pnl_realized, 2),
+            "source": "manual"
+        })
+        
+        logger.info(f"✅ Sold {quantity} {symbol} @ {sell_price} (P&L: {pnl_realized:+.2f}) for user {user_id}")
+        
+        return {
+            "success": True,
+            "symbol": symbol,
+            "quantity_sold": quantity,
+            "buy_price": buy_price,
+            "sell_price": sell_price,
+            "pnl_realized": round(pnl_realized, 2),
+            "pnl_percent": round(pnl_percent, 2),
+            "quantity_remaining": remaining
+        }
     
     # Transaction operations
     
