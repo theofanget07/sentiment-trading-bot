@@ -56,40 +56,123 @@ application = None
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    db_status = "✅ Online" if DB_AVAILABLE else "⚠️ Offline (Maintenance Mode)"
+    db_status = "✅ Online" if DB_AVAILABLE else "⚠️ Offline"
     
     welcome_text = f"""
-🤖 **Sentiment Trading Bot** - Welcome {user.first_name}!
+👋 **Bienvenue {user.first_name} !**
 
-**System Status:**
+🤖 **Sentiment Trading Bot** - Ton assistant crypto intelligent
+
+━━━━━━━━━━━━━━━━━━
+📊 **STATUT SYSTÈME**
 • Bot: ✅ Online
-• Database: {db_status}
+• Base de données: {db_status}
 
-**Available Commands:**
-/analyze <text> - AI Sentiment Analysis (Works 24/7)
-/portfolio - View holdings (Requires DB)
-/help - Show all commands
+━━━━━━━━━━━━━━━━━━
+🎯 **ANALYSE DE SENTIMENT** (toujours disponible)
 
-**Deployed on Railway** 🚀
+• `/analyze <texte>` - Analyse AI du sentiment crypto
+  _Ex: `/analyze Bitcoin hits new ATH after ETF approval`_
+
+• **Envoyez un lien** - Scraping + analyse automatique d'articles
+  _Ex: https://cointelegraph.com/..._
+
+• **Envoyez du texte** (30+ caractères) - Analyse directe
+
+━━━━━━━━━━━━━━━━━━
+💼 **GESTION DE PORTFOLIO** (nécessite DB)
+
+• `/portfolio` - Affiche ton portfolio avec prix actuels & P&L
+  _Ex: BTC: 1 @ $45,000 → P&L: +$30,612 (+68%)_
+
+• `/add <SYMBOL> <quantité> <prix>` - Ajoute une position
+  _Ex: `/add BTC 0.5 45000`_
+  _Ex: `/add ETH 10 2500`_
+
+• `/remove <SYMBOL>` - Supprime une position
+  _Ex: `/remove BTC`_
+
+• `/summary` - Résumé global (P&L total, valeur investie)
+
+• `/history` - Historique des 5 dernières transactions
+
+━━━━━━━━━━━━━━━━━━
+🚀 **CRYPTOS SUPPORTÉES**
+BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
+
+━━━━━━━━━━━━━━━━━━
+💡 **FONCTIONNALITÉS**
+• Analyse sentiment AI (Perplexity)
+• Prix crypto temps réel (CoinGecko)
+• Calcul P&L automatique
+• Historique transactions
+• Portfolio multi-cryptos
+
+_Tape `/help` pour plus d'infos_
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """
-📚 **Help - Sentiment Trading Bot**
+📚 **Guide Complet - Sentiment Trading Bot**
 
-**Analysis (Always Available):**
-• `/analyze <text>` - Analyze crypto news
-• Send any link or text
+━━━━━━━━━━━━━━━━━━
+🔍 **1. ANALYSE DE SENTIMENT**
 
-**Portfolio (Requires Database):**
-• `/portfolio` - View your holdings
-• `/add BTC 0.5 45000` - Add position
-• `/remove BTC` - Remove position
-• `/summary` - P&L Summary
-• `/history` - Transactions
+Le bot utilise Perplexity AI pour analyser le sentiment crypto (BULLISH/BEARISH/NEUTRAL) avec un score de confiance.
 
-_Powered by Perplexity AI + CoinGecko_
+**Méthodes d'analyse :**
+• `/analyze <texte>` - Analyse un texte que tu fournis
+• Envoyer un lien - Le bot scrape l'article automatiquement
+• Envoyer du texte long - Détection automatique (30+ caractères)
+
+**Exemple de résultat :**
+🚀 **BULLISH** (89%)
+💡 "Bitcoin montre une forte dynamique hausssière avec l'approbation des ETF..."
+
+━━━━━━━━━━━━━━━━━━
+💼 **2. GESTION DE PORTFOLIO**
+
+**Ajouter une position :**
+`/add BTC 1 45000`
+→ Ajoute 1 BTC acheté à $45,000
+→ Si tu détiens déjà du BTC, recalcule le prix moyen
+
+**Voir ton portfolio :**
+`/portfolio`
+→ Affiche toutes tes positions avec :
+  • Quantité détenue
+  • Prix d'achat moyen
+  • Prix actuel (temps réel)
+  • Valeur actuelle
+  • P&L en $ et %
+
+**Supprimer une position :**
+`/remove BTC`
+→ Supprime complètement la position BTC
+
+**Résumé global :**
+`/summary`
+→ Affiche ton P&L total sur tout le portfolio
+
+**Historique :**
+`/history`
+→ Les 5 dernières transactions (BUY/REMOVE)
+
+━━━━━━━━━━━━━━━━━━
+🚀 **CRYPTOS DISPONIBLES**
+
+Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), Cardano (ADA), Avalanche (AVAX), Polkadot (DOT), Polygon (MATIC), Chainlink (LINK), Uniswap (UNI), Cosmos (ATOM), Litecoin (LTC), Bitcoin Cash (BCH), Stellar (XLM)
+
+━━━━━━━━━━━━━━━━━━
+🛠️ **INFOS TECHNIQUES**
+
+• **Storage :** Redis (ultra-rapide)
+• **Prix :** CoinGecko API (temps réel)
+• **AI :** Perplexity API (analyse sentiment)
+• **Hosting :** Railway (24/7)
+
+_Retour au menu : `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
