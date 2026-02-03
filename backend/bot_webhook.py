@@ -27,11 +27,11 @@ try:
 except ImportError:
     from crypto_prices import format_price, get_crypto_price
 
-# Import database init function
+# Import ASYNC database init function
 try:
-    from backend.database import init_db
+    from backend.database import init_db_async
 except ImportError:
-    from database import init_db
+    from database import init_db_async
 
 try:
     from article_scraper import extract_article, extract_urls
@@ -489,7 +489,7 @@ async def root():
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "mode": "webhook", "storage": "json", "features": ["sentiment", "portfolio", "pnl"]}
+    return {"status": "ok", "mode": "webhook", "storage": "postgresql+json_fallback", "features": ["sentiment", "portfolio", "pnl"]}
 
 # SIMPLIFIED WEBHOOK ENDPOINT (No dynamic path param)
 @app.post("/webhook")
@@ -563,20 +563,23 @@ async def setup_application():
         await application.bot.set_webhook(url=webhook_endpoint)
         logger.info("✅ Webhook configured")
     
-    logger.info("🤖 Bot ready with JSON storage + P&L tracking")
+    logger.info("🤖 Bot ready with PostgreSQL + JSON fallback")
 
 @app.on_event("startup")
 async def startup():
     """Run on application startup."""
-    logger.info("🚀 FastAPI startup - JSON storage + portfolio P&L mode")
+    logger.info("🚀 FastAPI startup - PostgreSQL + JSON fallback mode")
     
-    # Create PostgreSQL tables if they don't exist
+    # Create PostgreSQL tables asynchronously (non-blocking)
     try:
-        logger.info("🔨 Initializing database tables...")
-        init_db()
-        logger.info("✅ Database tables ready")
+        logger.info("🔨 Initializing database tables (async)...")
+        success = await init_db_async()
+        if success:
+            logger.info("✅ PostgreSQL tables ready - portfolio will use database")
+        else:
+            logger.warning("⚠️ PostgreSQL init failed - falling back to JSON storage")
     except Exception as e:
-        logger.warning(f"⚠️ Database initialization warning: {e}")
+        logger.warning(f"⚠️ Database initialization error: {e}")
         logger.info("📁 Continuing with JSON storage fallback")
     
     await setup_application()
