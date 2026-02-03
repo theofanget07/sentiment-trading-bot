@@ -3,6 +3,7 @@
 Database configuration for PostgreSQL using SQLAlchemy.
 """
 import os
+import asyncio
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -49,12 +50,32 @@ def get_db():
         db.close()
 
 def init_db():
-    """Initialize database (create all tables)."""
+    """Initialize database (create all tables) - SYNCHRONOUS version."""
     from backend.models import User, PortfolioPosition, Transaction, Recommendation
     
     logger.info("🔨 Creating database tables...")
     Base.metadata.create_all(bind=engine)
     logger.info("✅ Database tables created successfully!")
+
+async def init_db_async():
+    """Initialize database asynchronously (non-blocking for FastAPI startup).
+    
+    This runs the synchronous init_db() in a thread pool executor
+    to prevent blocking the async event loop.
+    """
+    logger.info("🔨 Initializing database tables (async)...")
+    
+    try:
+        # Run the blocking database operation in a thread pool
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, init_db)
+        logger.info("✅ Database tables ready (async init complete)")
+        return True
+    except Exception as e:
+        logger.error(f"❌ Database initialization failed: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        return False
 
 def test_connection():
     """Test database connection."""
