@@ -119,6 +119,7 @@ class RedisStorage:
 # user:{user_id}:positions:{symbol} -> {"quantity": float, "avg_price": float}
 # user:{user_id}:transactions -> [{"symbol": str, "quantity": float, ...}]
 # user:{user_id}:realized_pnl -> [{"symbol": str, "quantity_sold": float, "pnl_realized": float, ...}]
+# user:{user_id}:alerts:{symbol} -> {"symbol": str, "price_threshold": float, "created_at": str}
 
 def get_user_profile(user_id: int) -> Optional[Dict]:
     """Get user profile from Redis."""
@@ -293,6 +294,115 @@ def get_total_realized_pnl(user_id: int) -> float:
     except Exception as e:
         logger.error(f"Error calculating total realized P&L: {e}")
         return 0.0
+
+
+# ===== PRICE ALERTS MANAGEMENT =====
+
+def set_alert(user_id: int, symbol: str, price_threshold: float) -> bool:
+    """Set a price alert for a user.
+    
+    Args:
+        user_id: User ID
+        symbol: Crypto symbol (BTC, ETH, etc.)
+        price_threshold: Price to trigger alert
+    
+    Returns:
+        True if alert was set successfully
+    """
+    try:
+        alert = {
+            "symbol": symbol.upper(),
+            "price_threshold": price_threshold,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        redis_client.set(f"user:{user_id}:alerts:{symbol.upper()}", json.dumps(alert))
+        logger.info(f"✅ Alert set: User {user_id} - {symbol} @ ${price_threshold}")
+        return True
+    except Exception as e:
+        logger.error(f"Error setting alert: {e}")
+        return False
+
+def get_alerts(user_id: int) -> Dict[str, Dict]:
+    """Get all active alerts for a user.
+    
+    Returns:
+        Dict with symbol as key and alert data as value
+    """
+    try:
+        pattern = f"user:{user_id}:alerts:*"
+        keys = redis_client.keys(pattern)
+        
+        alerts = {}
+        for key in keys:
+            symbol = key.split(':')[-1]
+            data = redis_client.get(key)
+            if data:
+                alerts[symbol] = json.loads(data)
+        
+        return alerts
+    except Exception as e:
+        logger.error(f"Error getting alerts: {e}")
+        return {}
+
+def get_alert(user_id: int, symbol: str) -> Optional[Dict]:
+    """Get a specific alert.
+    
+    Returns:
+        Alert dict or None if not found
+    """
+    try:
+        data = redis_client.get(f"user:{user_id}:alerts:{symbol.upper()}")
+        return json.loads(data) if data else None
+    except Exception as e:
+        logger.error(f"Error getting alert: {e}")
+        return None
+
+def remove_alert(user_id: int, symbol: str) -> bool:
+    """Remove a price alert.
+    
+    Returns:
+        True if alert was removed
+    """
+    try:
+        result = redis_client.delete(f"user:{user_id}:alerts:{symbol.upper()}")
+        if result > 0:
+            logger.info(f"✅ Alert removed: User {user_id} - {symbol}")
+            return True
+        else:
+            logger.warning(f"⚠️ No alert found: User {user_id} - {symbol}")
+            return False
+    except Exception as e:
+        logger.error(f"Error removing alert: {e}")
+        return False
+
+def get_all_alerts() -> Dict[int, Dict[str, Dict]]:
+    """Get ALL alerts from all users (for Celery worker).
+    
+    Returns:
+        Dict: {user_id: {symbol: alert_data}}
+    """
+    try:
+        pattern = "user:*:alerts:*"
+        keys = redis_client.keys(pattern)
+        
+        all_alerts = {}
+        for key in keys:
+            parts = key.split(':')
+            if len(parts) >= 4:
+                user_id = int(parts[1])
+                symbol = parts[3]
+                
+                data = redis_client.get(key)
+                if data:
+                    if user_id not in all_alerts:
+                        all_alerts[user_id] = {}
+                    all_alerts[user_id][symbol] = json.loads(data)
+        
+        return all_alerts
+    except Exception as e:
+        logger.error(f"Error getting all alerts: {e}")
+        return {}
+
 
 def test_connection() -> bool:
     """Test Redis connection."""
