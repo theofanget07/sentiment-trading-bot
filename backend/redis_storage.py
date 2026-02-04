@@ -33,6 +33,87 @@ except Exception as e:
     logger.error(f"❌ Redis connection failed: {e}")
     raise
 
+
+# ===== CLASS-BASED INTERFACE (for Celery tasks) =====
+
+class RedisStorage:
+    """Object-oriented interface to Redis storage.
+    
+    This class encapsulates all Redis operations for easy use in Celery tasks.
+    """
+    
+    def __init__(self):
+        """Initialize Redis storage."""
+        self.client = redis_client
+        logger.debug("RedisStorage instance created")
+    
+    def get_all_user_ids(self) -> List[str]:
+        """Get all user IDs from Redis.
+        
+        Returns:
+            List of user ID keys (e.g., ['user:123', 'user:456'])
+        """
+        try:
+            # Find all user profile keys
+            pattern = "user:*:profile"
+            keys = self.client.keys(pattern)
+            
+            # Extract user IDs from keys
+            user_ids = []
+            for key in keys:
+                # Extract user_id from key like "user:123:profile"
+                parts = key.split(':')
+                if len(parts) >= 2:
+                    user_ids.append(f"user:{parts[1]}")
+            
+            return user_ids
+        except Exception as e:
+            logger.error(f"Error getting all user IDs: {e}")
+            return []
+    
+    def get_portfolio(self, user_id: int) -> Dict[str, Dict]:
+        """Get all positions for a user (alias for get_all_positions).
+        
+        Returns:
+            Dict with symbol as key and position data as value.
+            Position data: {"quantity": float, "avg_price": float, ...}
+        """
+        return get_all_positions(user_id)
+    
+    def get_position(self, user_id: int, symbol: str) -> Optional[Dict]:
+        """Get a specific position."""
+        return get_position(user_id, symbol)
+    
+    def set_position(self, user_id: int, symbol: str, quantity: float, avg_price: float) -> bool:
+        """Save/update a position."""
+        return set_position(user_id, symbol, quantity, avg_price)
+    
+    def delete_position(self, user_id: int, symbol: str) -> bool:
+        """Delete a position."""
+        return delete_position(user_id, symbol)
+    
+    def get_user_profile(self, user_id: int) -> Optional[Dict]:
+        """Get user profile."""
+        return get_user_profile(user_id)
+    
+    def set_user_profile(self, user_id: int, username: str) -> bool:
+        """Save user profile."""
+        return set_user_profile(user_id, username)
+    
+    def add_transaction(self, user_id: int, transaction: Dict) -> bool:
+        """Add a transaction to history."""
+        return add_transaction(user_id, transaction)
+    
+    def get_transactions(self, user_id: int, limit: int = 10) -> List[Dict]:
+        """Get recent transactions."""
+        return get_transactions(user_id, limit)
+    
+    def test_connection(self) -> bool:
+        """Test Redis connection."""
+        return test_connection()
+
+
+# ===== FUNCTION-BASED INTERFACE (backward compatibility) =====
 # Redis Key Structure:
 # user:{user_id}:profile -> {"user_id": int, "username": str}
 # user:{user_id}:positions:{symbol} -> {"quantity": float, "avg_price": float}
