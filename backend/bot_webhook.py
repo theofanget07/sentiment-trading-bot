@@ -28,9 +28,9 @@ except ImportError:
     import redis_storage
 
 try:
-    from backend.crypto_prices import format_price, get_crypto_price
+    from backend.crypto_prices import format_price, get_crypto_price, is_symbol_supported
 except ImportError:
-    from crypto_prices import format_price, get_crypto_price
+    from crypto_prices import format_price, get_crypto_price, is_symbol_supported
 
 try:
     from article_scraper import extract_article, extract_urls
@@ -652,12 +652,25 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Price must be positive.", parse_mode='Markdown')
         return
     
-    # Check if crypto is supported
-    current_price = get_crypto_price(symbol)
-    if current_price is None:
+    # ✅ AMÉLIORATION: Vérifier le support du symbole AVANT d'appeler l'API
+    if not is_symbol_supported(symbol):
         await update.message.reply_text(
             f"❌ **{symbol} not supported**\n\n"
             "Supported cryptos: BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Fetch current price (with retry logic from crypto_prices.py)
+    current_price = get_crypto_price(symbol)
+    
+    # ✅ AMÉLIORATION: Message distinct si API échoue malgré les retries
+    if current_price is None:
+        await update.message.reply_text(
+            f"⚠️ **Price API Temporarily Unavailable**\n\n"
+            f"Cannot fetch current price for **{symbol}** right now.\n"
+            f"This is likely a temporary CoinGecko API issue.\n\n"
+            f"💡 **Please try again in a few minutes.**",
             parse_mode='Markdown'
         )
         return
