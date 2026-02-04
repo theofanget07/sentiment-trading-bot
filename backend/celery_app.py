@@ -9,6 +9,7 @@ Features powered by Celery:
 1. Price alerts monitoring (every 15 minutes)
 2. AI recommendations (daily at 8am)
 3. Daily insights (daily at 8am per user timezone)
+4. Bonus Trade of the Day (daily at 8am)
 """
 
 import os
@@ -24,6 +25,7 @@ app = Celery(
         "backend.tasks.alerts_checker",
         "backend.tasks.ai_recommender",
         "backend.tasks.daily_insights",
+        "backend.tasks.bonus_trade",  # BONUS TRADE OF THE DAY
     ],
 )
 
@@ -73,6 +75,13 @@ app.conf.beat_schedule = {
     # Feature 5: Daily insights - daily at 8:00 AM CET
     "send-daily-insights": {
         "task": "backend.tasks.daily_insights.send_daily_portfolio_insights",
+        "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
+        "options": {"expires": 3600},  # Expire after 1h
+    },
+    
+    # BONUS: Trade of the Day - daily at 8:00 AM CET
+    "bonus-trade-of-day": {
+        "task": "backend.tasks.bonus_trade.send_bonus_trade_of_day",
         "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
         "options": {"expires": 3600},  # Expire after 1h
     },
