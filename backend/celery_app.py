@@ -11,15 +11,20 @@ Features powered by Celery:
 3. Daily insights (daily at 8am per user timezone)
 4. Bonus Trade of the Day (daily at 8am)
 
-Last updated: 2026-02-04 17:43 CET
+Last updated: 2026-02-04 21:41 CET
 """
 
 import os
+import sys
 import logging
 from celery import Celery
 from celery.schedules import crontab
 
 # Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # Initialize Celery app
@@ -93,13 +98,33 @@ app.conf.beat_schedule = {
     },
 }
 
-# Log startup info
-logger.info("="*60)
-logger.info("Celery Configuration Loaded - Bonus Trade Feature Active")
-logger.info(f"Tasks included: {len(app.conf.include)} modules")
-logger.info(f"Beat schedules: {len(app.conf.beat_schedule)} tasks")
-logger.info("BONUS TRADE OF THE DAY: Scheduled at 08:00 CET daily")
-logger.info("="*60)
+# Force print configuration info to stderr (always visible in Railway logs)
+config_banner = f"""
+{'='*70}
+🚀 CELERY CONFIGURATION LOADED - BONUS TRADE FEATURE ACTIVE
+{'='*70}
+📦 Tasks included: {len(app.conf.include)} modules
+   1. backend.tasks.alerts_checker
+   2. backend.tasks.ai_recommender
+   3. backend.tasks.daily_insights
+   4. backend.tasks.bonus_trade ⭐ NEW
+
+⏰ Beat schedules: {len(app.conf.beat_schedule)} tasks configured
+   1. check-price-alerts         → Every 15 minutes
+   2. generate-ai-recommendations → Daily 08:00 CET
+   3. send-daily-insights        → Daily 08:00 CET
+   4. bonus-trade-of-day         → Daily 08:00 CET ⭐ NEW
+
+🎯 Next execution: Tomorrow 08:00 CET (all daily tasks)
+{'='*70}
+"""
+
+# Print to stderr (guaranteed to appear in logs)
+print(config_banner, file=sys.stderr, flush=True)
+
+# Also log it
+logger.info("Celery configuration loaded successfully")
+logger.info(f"Tasks: {len(app.conf.include)} modules, Schedules: {len(app.conf.beat_schedule)} tasks")
 
 if __name__ == "__main__":
     app.start()
