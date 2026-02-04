@@ -43,17 +43,34 @@ SYMBOL_TO_ID = {
 _price_cache: Dict[str, tuple[float, float]] = {}  # symbol -> (price, timestamp)
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
-def get_crypto_price(symbol: str, force_refresh: bool = False) -> Optional[float]:
+def is_symbol_supported(symbol: str) -> bool:
+    """Check if crypto symbol is supported.
+    
+    Args:
+        symbol: Crypto symbol (BTC, ETH, etc.)
+        
+    Returns:
+        True if supported, False otherwise
+    """
+    return symbol.upper() in SYMBOL_TO_ID
+
+def get_crypto_price(symbol: str, force_refresh: bool = False, max_retries: int = 3) -> Optional[float]:
     """Get current price for crypto symbol in USD.
     
     Args:
         symbol: Crypto symbol (BTC, ETH, SOL, etc.)
         force_refresh: Bypass cache and fetch fresh price
+        max_retries: Maximum number of API retry attempts
         
     Returns:
         Price in USD or None if error
     """
     symbol = symbol.upper()
+    
+    # Validate symbol first
+    if not is_symbol_supported(symbol):
+        logger.warning(f"⚠️ Unknown crypto symbol: {symbol}")
+        return None
     
     # Check cache first (unless force refresh)
     if not force_refresh and symbol in _price_cache:
@@ -66,74 +83,103 @@ def get_crypto_price(symbol: str, force_refresh: bool = False) -> Optional[float
             logger.debug(f"⏰ Cache expired for {symbol} (age: {age:.0f}s)")
     
     # Map symbol to CoinGecko ID
-    coin_id = SYMBOL_TO_ID.get(symbol)
-    if not coin_id:
-        logger.warning(f"⚠️ Unknown crypto symbol: {symbol}")
-        return None
+    coin_id = SYMBOL_TO_ID[symbol]
     
-    # Fetch from CoinGecko
-    try:
-        url = f"{COINGECKO_API_BASE}/simple/price?ids={coin_id}&vs_currencies=usd"
-        logger.info(f"🔍 Fetching {symbol} price from CoinGecko...")
-        
-        req = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "sentiment-trading-bot/1.0",
-                "Accept": "application/json",
-            },
-        )
-        
-        with urllib.request.urlopen(req, timeout=15) as response:
-            data = json.loads(response.read().decode('utf-8'))
-        
-        price = data.get(coin_id, {}).get("usd")
-        if price is None:
-            logger.error(f"❌ No price data for {symbol} (coin_id: {coin_id}). Response: {data}")
+    # Fetch from CoinGecko with retries
+    for attempt in range(1, max_retries + 1):
+        try:
+            url = f"{COINGECKO_API_BASE}/simple/price?ids={coin_id}&vs_currencies=usd"
+            logger.info(f"🔍 Fetching {symbol} price from CoinGecko (attempt {attempt}/{max_retries})...")
+            
+            req = urllib.request.Request(
+                url,
+                headers={
+                    "User-Agent": "sentiment-trading-bot/1.0",
+                    "Accept": "application/json",
+                },
+            )
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode('utf-8'))
+            
+            price = data.get(coin_id, {}).get("usd")
+            if price is None:
+                logger.error(f"❌ No price data for {symbol} (coin_id: {coin_id}). Response: {data}")
+                
+                # Try cache on last attempt
+                if attempt == max_retries and symbol in _price_cache:
+                    old_price, _ = _price_cache[symbol]
+                    logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+                    return old_price
+                
+                return None
+            
+            # Update cache
+            _price_cache[symbol] = (price, time.time())
+            logger.info(f"✅ Fetched price for {symbol}: ${price:,.2f}")
+            
+            return float(price)
+            
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode('utf-8') if hasattr(e, 'read') else 'No body'
+            logger.error(f"❌ CoinGecko API HTTP error for {symbol} (attempt {attempt}/{max_retries}): {e.code} {e.reason}")
+            logger.error(f"   Response body: {error_body}")
+            
+            # Retry on rate limit (429) or server error (5xx)
+            if e.code in [429, 500, 502, 503, 504] and attempt < max_retries:
+                wait_time = 2 ** attempt  # Exponential backoff: 2s, 4s, 8s
+                logger.info(f"⏳ Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            
+            # Return cached value on last attempt
+            if symbol in _price_cache:
+                old_price, _ = _price_cache[symbol]
+                logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+                return old_price
+            
             return None
-        
-        # Update cache
-        _price_cache[symbol] = (price, time.time())
-        logger.info(f"✅ Fetched price for {symbol}: ${price:,.2f}")
-        
-        return float(price)
-        
-    except urllib.error.HTTPError as e:
-        error_body = e.read().decode('utf-8') if hasattr(e, 'read') else 'No body'
-        logger.error(f"❌ CoinGecko API HTTP error for {symbol}: {e.code} {e.reason}")
-        logger.error(f"   Response body: {error_body}")
-        
-        # Return cached value if available (better than None)
-        if symbol in _price_cache:
-            old_price, _ = _price_cache[symbol]
-            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
-            return old_price
-        
-        return None
-        
-    except urllib.error.URLError as e:
-        logger.error(f"❌ Network error fetching {symbol}: {e.reason}")
-        
-        # Return cached value if available
-        if symbol in _price_cache:
-            old_price, _ = _price_cache[symbol]
-            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
-            return old_price
-        
-        return None
-        
-    except Exception as e:
-        logger.error(f"❌ Unexpected error fetching price for {symbol}: {type(e).__name__}: {e}")
-        import traceback
-        logger.error(traceback.format_exc())
-        
-        # Return cached value if available
-        if symbol in _price_cache:
-            old_price, _ = _price_cache[symbol]
-            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
-            return old_price
-        
-        return None
+            
+        except urllib.error.URLError as e:
+            logger.error(f"❌ Network error fetching {symbol} (attempt {attempt}/{max_retries}): {e.reason}")
+            
+            # Retry on network error
+            if attempt < max_retries:
+                wait_time = 2 ** attempt
+                logger.info(f"⏳ Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            
+            # Return cached value on last attempt
+            if symbol in _price_cache:
+                old_price, _ = _price_cache[symbol]
+                logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+                return old_price
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"❌ Unexpected error fetching price for {symbol} (attempt {attempt}/{max_retries}): {type(e).__name__}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            
+            # Retry on unexpected error
+            if attempt < max_retries:
+                wait_time = 2 ** attempt
+                logger.info(f"⏳ Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                continue
+            
+            # Return cached value on last attempt
+            if symbol in _price_cache:
+                old_price, _ = _price_cache[symbol]
+                logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+                return old_price
+            
+            return None
+    
+    # Should never reach here
+    return None
 
 def get_multiple_prices(symbols: list[str], force_refresh: bool = False) -> Dict[str, Optional[float]]:
     """Get prices for multiple crypto symbols.
