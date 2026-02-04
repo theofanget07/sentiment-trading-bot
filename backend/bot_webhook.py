@@ -64,6 +64,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Your AI crypto copilot for:
 • Sentiment analysis
 • Portfolio management
+• Price alerts
 • P&L tracking
 
 ━━━━━━━━━━━━━━━━━━
@@ -98,6 +99,18 @@ Your AI crypto copilot for:
 • `/summary` – Global overview (realized + unrealized, best/worst)
 
 • `/history` – Last 5 transactions
+
+━━━━━━━━━━━━━━━━━━
+🔔 **PRICE ALERTS**
+
+• `/setalert <SYMBOL> <price>`
+  Get notified when price is reached.
+  _Example: `/setalert BTC 75000`_
+
+• `/listalerts` – View your active alerts
+
+• `/removealert <SYMBOL>` – Delete an alert
+  _Example: `/removealert BTC`_
 
 ━━━━━━━━━━━━━━━━━━
 📈 **SUPPORTED CRYPTOS**
@@ -175,6 +188,29 @@ The bot uses Perplexity AI to analyze crypto sentiment (BULLISH/BEARISH/NEUTRAL)
 → Last 5 transactions (BUY/SELL/REMOVE)
 
 ━━━━━━━━━━━━━━━━━━
+🔔 **3. PRICE ALERTS**
+
+**Set an alert:**
+`/setalert BTC 75000`
+→ You'll receive a Telegram notification when BTC reaches $75,000
+→ Alerts are checked every 15 minutes
+→ One alert per crypto (new alert replaces old one)
+
+**View active alerts:**
+`/listalerts`
+→ Shows all your active price alerts with current prices
+
+**Remove an alert:**
+`/removealert BTC`
+→ Deletes the alert for BTC
+
+**How it works:**
+• Automated monitoring via Celery worker
+• Real-time prices from CoinGecko
+• Alert triggers once, then auto-deletes
+• Set new alert after trigger if needed
+
+━━━━━━━━━━━━━━━━━━
 🚀 **AVAILABLE CRYPTOS**
 
 Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), Cardano (ADA), Avalanche (AVAX), Polkadot (DOT), Polygon (MATIC), Chainlink (LINK), Uniswap (UNI), Cosmos (ATOM), Litecoin (LTC), Bitcoin Cash (BCH), Stellar (XLM)
@@ -185,6 +221,7 @@ Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), C
 • **Storage:** Redis (ultra-fast)
 • **Prices:** CoinGecko API (real-time)
 • **AI:** Perplexity API (sentiment analysis)
+• **Automation:** Celery (alerts + insights)
 • **Hosting:** Railway (24/7)
 
 _Back to menu: `/start`_
@@ -552,6 +589,187 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error loading history.", parse_mode='Markdown')
 
+# ===== PRICE ALERTS COMMANDS =====
+
+async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Set a price alert for a crypto."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline. Cannot set alert.", parse_mode='Markdown')
+        return
+    
+    user_id = update.effective_user.id
+    
+    # Validate arguments
+    if len(context.args) != 2:
+        await update.message.reply_text(
+            "⚠️ **Usage:** `/setalert <symbol> <price>`\n\n"
+            "**Example:** `/setalert BTC 75000`\n"
+            "You'll be notified when BTC reaches $75,000",
+            parse_mode='Markdown'
+        )
+        return
+    
+    symbol = context.args[0].upper()
+    
+    try:
+        price_threshold = float(context.args[1])
+    except ValueError:
+        await update.message.reply_text("❌ Price must be a number.", parse_mode='Markdown')
+        return
+    
+    if price_threshold <= 0:
+        await update.message.reply_text("❌ Price must be positive.", parse_mode='Markdown')
+        return
+    
+    # Check if crypto is supported
+    current_price = get_crypto_price(symbol)
+    if current_price is None:
+        await update.message.reply_text(
+            f"❌ **{symbol} not supported**\n\n"
+            "Supported cryptos: BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Set alert in Redis
+    try:
+        success = redis_storage.set_alert(user_id, symbol, price_threshold)
+        
+        if success:
+            # Determine direction
+            if price_threshold > current_price:
+                direction = "above"
+                emoji = "🚀"
+            else:
+                direction = "below"
+                emoji = "📉"
+            
+            response = f"✅ **Alert Set!**\n\n"
+            response += f"{emoji} **{symbol}** alert @ `{format_price(price_threshold)}`\n\n"
+            response += f"📊 Current price: `{format_price(current_price)}`\n"
+            response += f"🔔 You'll be notified when price goes {direction}\n\n"
+            response += f"_Alerts checked every 15 minutes_\n"
+            response += f"_Use `/listalerts` to see all your alerts_"
+            
+            await update.message.reply_text(response, parse_mode='Markdown')
+            logger.info(f"✅ Alert set: User {user_id} - {symbol} @ {price_threshold}")
+        else:
+            await update.message.reply_text("❌ Error setting alert. Please try again.", parse_mode='Markdown')
+    
+    except Exception as e:
+        logger.error(f"❌ /setalert error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error setting alert.", parse_mode='Markdown')
+
+async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """List all active price alerts."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        return
+    
+    user_id = update.effective_user.id
+    
+    try:
+        alerts = redis_storage.get_alerts(user_id)
+        
+        if not alerts:
+            response = "🔔 **Your Price Alerts**\n\n"
+            response += "_You have no active alerts._\n\n"
+            response += "Set one with:\n"
+            response += "`/setalert BTC 75000`"
+        else:
+            response = "🔔 **Your Price Alerts**\n"
+            response += f"_Active alerts: {len(alerts)}_\n"
+            
+            for symbol, alert_data in alerts.items():
+                threshold = alert_data["price_threshold"]
+                current_price = get_crypto_price(symbol)
+                
+                if current_price:
+                    diff = current_price - threshold
+                    diff_percent = (diff / threshold) * 100
+                    
+                    if diff > 0:
+                        status_emoji = "✅"
+                        status = f"Reached! (+{diff_percent:.1f}%)"
+                    else:
+                        status_emoji = "⏳"
+                        status = f"Pending ({diff_percent:+.1f}%)"
+                    
+                    response += f"\n{status_emoji} **{symbol}**\n"
+                    response += f"  • Alert: `{format_price(threshold)}`\n"
+                    response += f"  • Current: `{format_price(current_price)}`\n"
+                    response += f"  • Status: {status}"
+                else:
+                    response += f"\n⚠️ **{symbol}**\n"
+                    response += f"  • Alert: `{format_price(threshold)}`\n"
+                    response += f"  • Current: _price unavailable_"
+            
+            response += f"\n\n_Alerts checked every 15 minutes_\n"
+            response += f"_Remove with `/removealert <SYMBOL>`_"
+        
+        await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ /listalerts sent to {user_id}")
+    
+    except Exception as e:
+        logger.error(f"❌ /listalerts error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error loading alerts.", parse_mode='Markdown')
+
+async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Remove a price alert."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        return
+    
+    user_id = update.effective_user.id
+    
+    # Validate arguments
+    if len(context.args) != 1:
+        await update.message.reply_text(
+            "⚠️ **Usage:** `/removealert <symbol>`\n\n"
+            "**Example:** `/removealert BTC`",
+            parse_mode='Markdown'
+        )
+        return
+    
+    symbol = context.args[0].upper()
+    
+    try:
+        # Check if alert exists
+        alert = redis_storage.get_alert(user_id, symbol)
+        
+        if not alert:
+            await update.message.reply_text(
+                f"⚠️ No alert found for **{symbol}**.\n\n"
+                f"Use `/listalerts` to see your active alerts.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Remove alert
+        success = redis_storage.remove_alert(user_id, symbol)
+        
+        if success:
+            response = f"✅ **Alert Removed**\n\n"
+            response += f"`{symbol}` alert deleted.\n\n"
+            response += f"_Use `/setalert` to create a new one_"
+            
+            await update.message.reply_text(response, parse_mode='Markdown')
+            logger.info(f"✅ Alert removed: User {user_id} - {symbol}")
+        else:
+            await update.message.reply_text("❌ Error removing alert. Please try again.", parse_mode='Markdown')
+    
+    except Exception as e:
+        logger.error(f"❌ /removealert error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error removing alert.", parse_mode='Markdown')
+
+# ===== MESSAGE HANDLERS =====
+
 async def analyze_url(update: Update, url: str):
     scraping_msg = await update.message.reply_text("📰 Scraping article...", parse_mode='Markdown')
     try:
@@ -626,7 +844,8 @@ async def health():
         "db_connected": DB_AVAILABLE,
         "features": {
             "sentiment": "online",
-            "portfolio": "online" if DB_AVAILABLE else "offline"
+            "portfolio": "online" if DB_AVAILABLE else "offline",
+            "alerts": "online" if DB_AVAILABLE else "offline"
         }
     }
 
@@ -652,6 +871,7 @@ async def setup_application():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Add all command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("analyze", analyze_command))
@@ -661,6 +881,12 @@ async def setup_application():
     application.add_handler(CommandHandler("sell", sell_command))
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("history", history_command))
+    
+    # Price alerts commands
+    application.add_handler(CommandHandler("setalert", setalert_command))
+    application.add_handler(CommandHandler("listalerts", listalerts_command))
+    application.add_handler(CommandHandler("removealert", removealert_command))
+    
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
     
@@ -687,10 +913,10 @@ async def startup():
             logger.info("✅ Redis connected successfully!")
         else:
             DB_AVAILABLE = False
-            logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio)")
+            logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio/Alerts)")
     except Exception as e:
         logger.error(f"⚠️ Redis connection failed: {e}")
-        logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio)")
+        logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio/Alerts)")
         DB_AVAILABLE = False
     
     await setup_application()
