@@ -9,7 +9,8 @@ builder = "DOCKERFILE"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "uvicorn backend.bot_webhook:app --host 0.0.0.0 --port $PORT"
+# Railway injects PORT automatically - uvicorn reads it from environment
+startCommand = "uvicorn backend.bot_webhook:app --host 0.0.0.0 --port ${PORT:-8080}"
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 3
 
@@ -22,42 +23,42 @@ timeout = 10
 # ============================================================================
 # SERVICE 2: CELERY-WORKER (Async Task Processor)
 # ============================================================================
-# Pour ajouter ce service dans Railway:
-# 1. Créer un nouveau service "celery-worker"
-# 2. Connecter au même repo GitHub
-# 3. Variables d'env: copier depuis service "web"
-# 4. Start Command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
-# 5. Builder: Dockerfile
+# IMPORTANT: Railway ne crée PAS automatiquement les services depuis ce fichier.
+# Tu dois les créer MANUELLEMENT dans l'interface Railway.
+#
+# Pour ajouter ce service:
+# 1. Dans Railway Dashboard, clique "+ New Service"
+# 2. Sélectionne "GitHub Repo" > sentiment-trading-bot
+# 3. Nom du service: "celery-worker"
+# 4. Settings > Start Command: celery -A backend.celery_app worker --loglevel=info --concurrency=2
+# 5. Settings > Builder: Dockerfile
+# 6. Variables d'env: Copier depuis service "web" (REDIS_URL, TELEGRAM_BOT_TOKEN, PERPLEXITY_API_KEY)
+# 7. Connect au même Redis service
 
 # ============================================================================
 # SERVICE 3: CELERY-BEAT (Periodic Task Scheduler)
 # ============================================================================
-# Pour ajouter ce service dans Railway:
-# 1. Créer un nouveau service "celery-beat"
-# 2. Connecter au même repo GitHub
-# 3. Variables d'env: copier depuis service "web"
-# 4. Start Command: celery -A backend.celery_app beat --loglevel=info
-# 5. Builder: Dockerfile
+# Pour ajouter ce service:
+# 1. Dans Railway Dashboard, clique "+ New Service"
+# 2. Sélectionne "GitHub Repo" > sentiment-trading-bot
+# 3. Nom du service: "celery-beat"
+# 4. Settings > Start Command: celery -A backend.celery_app beat --loglevel=info
+# 5. Settings > Builder: Dockerfile
+# 6. Variables d'env: Copier depuis service "web"
+# 7. Connect au même Redis service
 
 # ============================================================================
-# NOTES DE DÉPLOIEMENT
+# FEATURES CELERY (exécutées par worker + beat)
 # ============================================================================
-# - Les 3 services partagent le même REDIS_URL (service Redis Railway)
-# - Les 3 services partagent les mêmes variables d'environnement
-# - web: Traite les commandes Telegram (port HTTP)
-# - celery-worker: Exécute les tasks async (pas de port)
-# - celery-beat: Planifie les tasks périodiques (pas de port)
-#
-# Features Celery:
-# - Feature 1: Price alerts (every 15min)
-# - Feature 4: AI recommendations (daily 8am)
-# - Feature 5: Daily insights (daily 8am)
+# - Feature 1: Price alerts (every 15min) - Notifications Telegram si BTC/ETH +10% ou -5%
+# - Feature 4: AI recommendations (daily 8am) - Perplexity AI analyse et recommande BUY/SELL
+# - Feature 5: Daily insights (daily 8am) - Résumé portfolio + news du jour
 
 # ============================================================================
 # VARIABLES D'ENVIRONNEMENT REQUISES (tous les services)
 # ============================================================================
-# REDIS_URL=<redis_internal_url>        # Railway Redis service
-# TELEGRAM_BOT_TOKEN=<bot_token>
-# PERPLEXITY_API_KEY=<perplexity_key>
-# WEBHOOK_URL=<railway_web_url>         # Seulement pour "web"
-# PORT=${{PORT}}                         # Auto-injecté par Railway pour "web"
+# REDIS_URL=<redis_internal_url>        # Railway Redis service (auto-injecté si connecté)
+# TELEGRAM_BOT_TOKEN=<bot_token>        # Bot Telegram
+# PERPLEXITY_API_KEY=<perplexity_key>   # API Perplexity AI
+# WEBHOOK_URL=<railway_web_url>         # Seulement pour service "web"
+# PORT=<auto>                            # Auto-injecté par Railway pour "web"
