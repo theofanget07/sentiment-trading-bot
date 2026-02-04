@@ -60,18 +60,22 @@ def get_crypto_price(symbol: str, force_refresh: bool = False) -> Optional[float
         price, cached_at = _price_cache[symbol]
         age = time.time() - cached_at
         if age < CACHE_TTL_SECONDS:
-            logger.debug(f"Cache hit for {symbol}: ${price:.2f} (age: {age:.0f}s)")
+            logger.debug(f"✅ Cache hit for {symbol}: ${price:.2f} (age: {age:.0f}s)")
             return price
+        else:
+            logger.debug(f"⏰ Cache expired for {symbol} (age: {age:.0f}s)")
     
     # Map symbol to CoinGecko ID
     coin_id = SYMBOL_TO_ID.get(symbol)
     if not coin_id:
-        logger.warning(f"Unknown crypto symbol: {symbol}")
+        logger.warning(f"⚠️ Unknown crypto symbol: {symbol}")
         return None
     
     # Fetch from CoinGecko
     try:
         url = f"{COINGECKO_API_BASE}/simple/price?ids={coin_id}&vs_currencies=usd"
+        logger.info(f"🔍 Fetching {symbol} price from CoinGecko...")
+        
         req = urllib.request.Request(
             url,
             headers={
@@ -80,25 +84,55 @@ def get_crypto_price(symbol: str, force_refresh: bool = False) -> Optional[float
             },
         )
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             data = json.loads(response.read().decode('utf-8'))
         
         price = data.get(coin_id, {}).get("usd")
         if price is None:
-            logger.error(f"No price data for {symbol} (coin_id: {coin_id})")
+            logger.error(f"❌ No price data for {symbol} (coin_id: {coin_id}). Response: {data}")
             return None
         
         # Update cache
         _price_cache[symbol] = (price, time.time())
-        logger.info(f"Fetched price for {symbol}: ${price:.2f}")
+        logger.info(f"✅ Fetched price for {symbol}: ${price:,.2f}")
         
-        return price
+        return float(price)
         
     except urllib.error.HTTPError as e:
-        logger.error(f"CoinGecko API error for {symbol}: {e.code} {e.reason}")
+        error_body = e.read().decode('utf-8') if hasattr(e, 'read') else 'No body'
+        logger.error(f"❌ CoinGecko API HTTP error for {symbol}: {e.code} {e.reason}")
+        logger.error(f"   Response body: {error_body}")
+        
+        # Return cached value if available (better than None)
+        if symbol in _price_cache:
+            old_price, _ = _price_cache[symbol]
+            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+            return old_price
+        
         return None
+        
+    except urllib.error.URLError as e:
+        logger.error(f"❌ Network error fetching {symbol}: {e.reason}")
+        
+        # Return cached value if available
+        if symbol in _price_cache:
+            old_price, _ = _price_cache[symbol]
+            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+            return old_price
+        
+        return None
+        
     except Exception as e:
-        logger.error(f"Failed to fetch price for {symbol}: {e}")
+        logger.error(f"❌ Unexpected error fetching price for {symbol}: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        
+        # Return cached value if available
+        if symbol in _price_cache:
+            old_price, _ = _price_cache[symbol]
+            logger.warning(f"⚠️ Using stale cache for {symbol}: ${old_price:.2f}")
+            return old_price
+        
         return None
 
 def get_multiple_prices(symbols: list[str], force_refresh: bool = False) -> Dict[str, Optional[float]]:
@@ -115,7 +149,10 @@ def get_multiple_prices(symbols: list[str], force_refresh: bool = False) -> Dict
     valid_symbols = [s.upper() for s in symbols if s.upper() in SYMBOL_TO_ID]
     
     if not valid_symbols:
+        logger.warning("⚠️ No valid symbols provided to get_multiple_prices")
         return {}
+    
+    logger.info(f"🔍 Fetching prices for {len(valid_symbols)} symbols: {valid_symbols}")
     
     # Map to CoinGecko IDs
     coin_ids = [SYMBOL_TO_ID[s] for s in valid_symbols]
@@ -131,26 +168,44 @@ def get_multiple_prices(symbols: list[str], force_refresh: bool = False) -> Dict
             },
         )
         
-        with urllib.request.urlopen(req, timeout=10) as response:
+        with urllib.request.urlopen(req, timeout=15) as response:
             data = json.loads(response.read().decode('utf-8'))
+        
+        logger.info(f"✅ CoinGecko API response received: {len(data)} coins")
         
         # Build result dict
         results = {}
         for symbol in valid_symbols:
             coin_id = SYMBOL_TO_ID[symbol]
             price = data.get(coin_id, {}).get("usd")
-            results[symbol] = price
             
-            # Update cache
             if price is not None:
-                _price_cache[symbol] = (price, time.time())
+                results[symbol] = float(price)
+                _price_cache[symbol] = (float(price), time.time())
+                logger.info(f"  {symbol}: ${price:,.2f}")
+            else:
+                logger.warning(f"⚠️ No price for {symbol} in response")
+                # Try cache
+                if symbol in _price_cache:
+                    old_price, _ = _price_cache[symbol]
+                    results[symbol] = old_price
+                    logger.warning(f"  Using cached {symbol}: ${old_price:,.2f}")
+                else:
+                    results[symbol] = None
         
-        logger.info(f"Fetched {len(results)} prices from CoinGecko")
         return results
         
+    except urllib.error.HTTPError as e:
+        logger.error(f"❌ CoinGecko API HTTP error: {e.code} {e.reason}")
+        # Fallback to cache
+        return {s: _price_cache.get(s, (None, 0))[0] for s in valid_symbols}
+        
     except Exception as e:
-        logger.error(f"Failed to fetch multiple prices: {e}")
-        return {s: None for s in valid_symbols}
+        logger.error(f"❌ Failed to fetch multiple prices: {type(e).__name__}: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # Fallback to cache
+        return {s: _price_cache.get(s, (None, 0))[0] for s in valid_symbols}
 
 def calculate_pnl(avg_buy_price: float, current_price: float) -> float:
     """Calculate profit/loss percentage.
