@@ -4,6 +4,7 @@ Sends daily portfolio summary to each user including:
 - Total portfolio value
 - 24h change
 - Best/worst performers
+- AI-powered management advice for each position
 - Market news summary
 
 Runs daily at 8:00 AM CET via Celery Beat.
@@ -67,6 +68,9 @@ def send_daily_portfolio_insights() -> Dict:
                 symbols = list(portfolio.keys())
                 news_summary = perplexity.get_crypto_news_summary(symbols)
                 
+                # Generate AI advice for each position
+                position_advice = generate_position_advice(portfolio, perplexity)
+                
                 # Send daily insight notification
                 success = notification_service.send_daily_insight(
                     chat_id=chat_id,
@@ -77,6 +81,7 @@ def send_daily_portfolio_insights() -> Dict:
                     best_performer=metrics["best_performer"],
                     best_performer_pct=metrics["best_performer_pct"],
                     news_summary=news_summary,
+                    position_advice=position_advice,
                 )
                 
                 if success:
@@ -168,6 +173,131 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
         return None
 
 
+def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
+    """Generate AI-powered advice for each portfolio position.
+    
+    Args:
+        portfolio: User's portfolio dict
+        perplexity: Perplexity client instance
+    
+    Returns:
+        List of dicts with symbol, pnl_pct, and advice
+    """
+    advice_list = []
+    
+    try:
+        for symbol, position in portfolio.items():
+            # Get current price
+            current_price = get_crypto_price(symbol)
+            if not current_price:
+                continue
+            
+            buy_price = position.get("buy_price", 0)
+            qty = position.get("qty", 0)
+            
+            if buy_price <= 0 or qty <= 0:
+                continue
+            
+            # Calculate P&L
+            pnl_pct = ((current_price - buy_price) / buy_price) * 100
+            
+            # Generate concise advice using Perplexity
+            advice_text = get_quick_position_advice(
+                perplexity, symbol, current_price, buy_price, pnl_pct
+            )
+            
+            advice_list.append({
+                "symbol": symbol,
+                "pnl_pct": pnl_pct,
+                "current_price": current_price,
+                "buy_price": buy_price,
+                "advice": advice_text,
+            })
+        
+        return advice_list
+    
+    except Exception as e:
+        logger.error(f"Error generating position advice: {e}")
+        return []
+
+
+def get_quick_position_advice(
+    perplexity, symbol: str, current_price: float, buy_price: float, pnl_pct: float
+) -> str:
+    """Get quick AI advice for a single position.
+    
+    Args:
+        perplexity: Perplexity client
+        symbol: Crypto symbol
+        current_price: Current market price
+        buy_price: User's buy price
+        pnl_pct: P&L percentage
+    
+    Returns:
+        Short advice string (1-2 sentences)
+    """
+    try:
+        import requests
+        import os
+        
+        # Quick prompt for concise advice
+        prompt = f"""
+Provide a brief 1-sentence trading advice for this {symbol} position:
+- Buy Price: ${buy_price:,.2f}
+- Current Price: ${current_price:,.2f}
+- P&L: {pnl_pct:+.1f}%
+
+Give ONE short actionable recommendation (HOLD/BUY MORE/TAKE PROFIT/STOP LOSS) based on current market conditions.
+Format: "[ACTION]: [brief reason]."
+Example: "HOLD: Strong support at $40k, wait for $50k target."
+""".strip()
+        
+        response = requests.post(
+            "https://api.perplexity.ai/chat/completions",
+            headers={
+                "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "sonar",
+                "messages": [
+                    {"role": "system", "content": "You are a concise crypto trading advisor."},
+                    {"role": "user", "content": prompt},
+                ],
+            },
+            timeout=15,
+        )
+        response.raise_for_status()
+        
+        data = response.json()
+        advice = data["choices"][0]["message"]["content"].strip()
+        
+        # Extract first sentence if multiple
+        if "." in advice:
+            advice = advice.split(".")[0] + "."
+        
+        # Limit to 100 chars
+        if len(advice) > 100:
+            advice = advice[:97] + "..."
+        
+        return advice
+    
+    except Exception as e:
+        logger.error(f"Error getting quick advice for {symbol}: {e}")
+        
+        # Fallback to simple rule-based advice
+        if pnl_pct > 20:
+            return "TAKE PROFIT: Consider selling 30-50% to secure gains."
+        elif pnl_pct > 10:
+            return "HOLD: Strong position, monitor resistance levels."
+        elif pnl_pct > 0:
+            return "HOLD: In profit, wait for clearer trend."
+        elif pnl_pct > -10:
+            return "HOLD: Small drawdown, avoid panic selling."
+        else:
+            return "REVIEW: Consider stop-loss to limit further losses."
+
+
 @app.task(name="backend.tasks.daily_insights.test_daily_insight")
 def test_daily_insight(chat_id: int) -> Dict:
     """Test task to manually send a daily insight (for testing).
@@ -182,7 +312,7 @@ def test_daily_insight(chat_id: int) -> Dict:
     
     notification_service = get_notification_service()
     
-    # Send fake daily insight
+    # Send fake daily insight with position advice
     success = notification_service.send_daily_insight(
         chat_id=chat_id,
         username="TestUser",
@@ -191,7 +321,11 @@ def test_daily_insight(chat_id: int) -> Dict:
         change_24h_pct=5.0,
         best_performer="BTC",
         best_performer_pct=12.5,
-        news_summary="BTC surged 12% on positive ETF news. ETH gained 8% following " "successful network upgrade.",
+        news_summary="BTC surged 12% on positive ETF news. ETH gained 8% following successful network upgrade.",
+        position_advice=[
+            {"symbol": "BTC", "pnl_pct": 12.5, "current_price": 45000, "buy_price": 40000, "advice": "HOLD: Strong momentum, target $50k."},
+            {"symbol": "ETH", "pnl_pct": 8.0, "current_price": 2700, "buy_price": 2500, "advice": "BUY MORE: Upgrade successful, DCA opportunity."},
+        ],
     )
     
     return {
