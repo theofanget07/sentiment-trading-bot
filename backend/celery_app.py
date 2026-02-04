@@ -10,11 +10,17 @@ Features powered by Celery:
 2. AI recommendations (daily at 8am)
 3. Daily insights (daily at 8am per user timezone)
 4. Bonus Trade of the Day (daily at 8am)
+
+Last updated: 2026-02-04 17:43 CET
 """
 
 import os
+import logging
 from celery import Celery
 from celery.schedules import crontab
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Initialize Celery app
 app = Celery(
@@ -86,6 +92,14 @@ app.conf.beat_schedule = {
         "options": {"expires": 3600},  # Expire after 1h
     },
 }
+
+# Log startup info
+logger.info("="*60)
+logger.info("Celery Configuration Loaded - Bonus Trade Feature Active")
+logger.info(f"Tasks included: {len(app.conf.include)} modules")
+logger.info(f"Beat schedules: {len(app.conf.beat_schedule)} tasks")
+logger.info("BONUS TRADE OF THE DAY: Scheduled at 08:00 CET daily")
+logger.info("="*60)
 
 if __name__ == "__main__":
     app.start()
