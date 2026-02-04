@@ -4,6 +4,7 @@ Provides utilities to send Telegram notifications from Celery tasks:
 - Price alerts
 - AI recommendations
 - Daily insights with position advice
+- Bonus Trade of the Day
 """
 
 import os
@@ -212,6 +213,78 @@ Have a great day! 🚀
 {reasoning}
 
 ⚠️ _This is AI-generated advice. Always do your own research._
+        """.strip()
+        
+        return self.send_message(chat_id, message)
+    
+    def send_bonus_trade(
+        self,
+        chat_id: int,
+        symbol: str,
+        action: str,
+        entry_price: float,
+        reasoning: str,
+        confidence: int,
+        risk_level: str,
+        target_price: Optional[float] = None,
+        stop_loss: Optional[float] = None,
+    ) -> bool:
+        """Send Bonus Trade of the Day notification.
+        
+        Args:
+            chat_id: Telegram chat ID
+            symbol: Crypto symbol (e.g., 'BTC')
+            action: Trading action (BUY/SELL)
+            entry_price: Recommended entry price
+            reasoning: AI analysis and reasoning
+            confidence: Confidence score (0-100)
+            risk_level: Risk level (LOW/MEDIUM/HIGH)
+            target_price: Take-profit target (optional)
+            stop_loss: Stop-loss level (optional)
+        
+        Returns:
+            True if sent successfully
+        """
+        # Risk level emoji
+        risk_emoji = {
+            "LOW": "🟢",
+            "MEDIUM": "🟡",
+            "HIGH": "🔴",
+        }.get(risk_level, "⚪")
+        
+        # Action emoji
+        action_emoji = "📈" if action == "BUY" else "📉" if action == "SELL" else "⚪"
+        
+        # Build message
+        message = f"""
+🏆 **BONUS TRADE OF THE DAY**
+━━━━━━━━━━━━━━━━━━
+
+{action_emoji} **{symbol}** - {action}
+
+💰 **Entry Price:** `${entry_price:,.2f}`
+        """.strip()
+        
+        # Add target & stop loss if provided
+        if target_price:
+            potential_gain = ((target_price - entry_price) / entry_price) * 100
+            message += f"\n🎯 **Target:** `${target_price:,.2f}` (`+{potential_gain:.1f}%`)"
+        
+        if stop_loss:
+            potential_loss = ((stop_loss - entry_price) / entry_price) * 100
+            message += f"\n🛑 **Stop Loss:** `${stop_loss:,.2f}` (`{potential_loss:.1f}%`)"
+        
+        message += f"""
+
+📊 **Confidence:** {confidence}%
+{risk_emoji} **Risk Level:** {risk_level}
+
+📝 **AI Analysis:**
+{reasoning}
+
+━━━━━━━━━━━━━━━━━━
+💡 _This is the top opportunity identified by AI from analyzing ALL supported cryptos._
+⚠️ _Always do your own research and manage risk carefully._
         """.strip()
         
         return self.send_message(chat_id, message)
