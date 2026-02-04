@@ -58,139 +58,136 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db_status = "✅ Online" if DB_AVAILABLE else "⚠️ Offline"
     
-    welcome_text = f"""
-👋 **Bienvenue {user.first_name} !**
+    welcome_text = f"""👋 **Welcome {user.first_name}!**
 
-🤖 **Sentiment Trading Bot** - Ton assistant crypto intelligent
-
-━━━━━━━━━━━━━━━━━━
-📊 **STATUT SYSTÈME**
-• Bot: ✅ Online
-• Base de données: {db_status}
+🤖 **Sentiment Trading Bot**
+Your AI crypto copilot for:
+• Sentiment analysis
+• Portfolio management
+• P&L tracking
 
 ━━━━━━━━━━━━━━━━━━
-🎯 **ANALYSE DE SENTIMENT** (toujours disponible)
+🎯 **SENTIMENT ANALYSIS**
 
-• `/analyze <texte>` - Analyse AI du sentiment crypto
-  _Ex: `/analyze Bitcoin hits new ATH after ETF approval`_
+• `/analyze <text>`
+  AI analysis of crypto news or ideas.
+  _Example: `/analyze Bitcoin hits new ATH after ETF approval`_
 
-• **Envoyez un lien** - Scraping + analyse automatique d'articles
-  _Ex: https://cointelegraph.com/..._
+• **Send an article link**
+  Bot scrapes and analyzes automatically.
 
-• **Envoyez du texte** (30+ caractères) - Analyse directe
-
-━━━━━━━━━━━━━━━━━━
-💼 **GESTION DE PORTFOLIO** (nécessite DB)
-
-• `/portfolio` - Affiche ton portfolio avec prix actuels & P&L
-  _Ex: BTC: 1 @ $45,000 → P&L: +$30,612 (+68%)_
-
-• `/add <SYMBOL> <quantité> <prix>` - Ajoute une position
-  _Ex: `/add BTC 0.5 45000`_
-  _Ex: `/add ETH 10 2500`_
-
-• `/remove <SYMBOL> [quantité]` - Supprime une position (totale ou partielle)
-  _Ex: `/remove BTC` (supprime tout)_
-  _Ex: `/remove BTC 0.5` (retire 0.5 BTC)_
-
-• `/sell <SYMBOL> <quantité> <prix>` - ⚡ NOUVEAU! Vend et enregistre P&L réalisé
-  _Ex: `/sell BTC 0.5 75000`_
-
-• `/summary` - Résumé global (P&L réalisé + non-réalisé, best/worst performers)
-
-• `/history` - Historique des 5 dernières transactions
+• **Send long text** (30+ chars)
+  Automatic analysis without command.
 
 ━━━━━━━━━━━━━━━━━━
-🚀 **CRYPTOS SUPPORTÉES**
+💼 **PORTFOLIO**
+
+• `/portfolio` – View your positions (quantities, prices, P&L)
+
+• `/add <SYMBOL> <quantity> <price>`
+  _Example: `/add BTC 0.5 45000`_
+
+• `/remove <SYMBOL> [quantity]`
+  _Example: `/remove BTC`_ (full removal)
+  _Example: `/remove BTC 0.5`_ (partial removal)
+
+• `/sell <SYMBOL> <quantity> <price>`
+  Sell and record **realized P&L**.
+  _Example: `/sell BTC 0.5 75000`_
+
+• `/summary` – Global overview (realized + unrealized, best/worst)
+
+• `/history` – Last 5 transactions
+
+━━━━━━━━━━━━━━━━━━
+📈 **SUPPORTED CRYPTOS**
+
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 ━━━━━━━━━━━━━━━━━━
-💡 **FONCTIONNALITÉS**
-• Analyse sentiment AI (Perplexity)
-• Prix crypto temps réel (CoinGecko)
-• Calcul P&L automatique
-• Historique transactions
-• Portfolio multi-cryptos
-• Vente partielle + tracking P&L réalisé
+ℹ️ **Quick Start**
 
-_Tape `/help` pour plus d'infos_
+Try this:
+`/add BTC 1 45000`
+Then: `/summary`
+
+_Type `/help` for detailed guide_
 """
-    await update.message.reply_text(welcome_text, parse_mode='Markdown')
+    await update.message.reply_text(welcome_text, parse_mode='Markdown', disable_web_page_preview=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """
-📚 **Guide Complet - Sentiment Trading Bot**
+    help_text = """📚 **Complete Guide - Sentiment Trading Bot**
 
 ━━━━━━━━━━━━━━━━━━
-🔍 **1. ANALYSE DE SENTIMENT**
+🔍 **1. SENTIMENT ANALYSIS**
 
-Le bot utilise Perplexity AI pour analyser le sentiment crypto (BULLISH/BEARISH/NEUTRAL) avec un score de confiance.
+The bot uses Perplexity AI to analyze crypto sentiment (BULLISH/BEARISH/NEUTRAL) with confidence score.
 
-**Méthodes d'analyse :**
-• `/analyze <texte>` - Analyse un texte que tu fournis
-• Envoyer un lien - Le bot scrape l'article automatiquement
-• Envoyer du texte long - Détection automatique (30+ caractères)
+**Analysis methods:**
+• `/analyze <text>` - Analyze provided text
+• Send a link - Bot scrapes article automatically
+• Send long text - Auto-detection (30+ chars)
 
-**Exemple de résultat :**
+**Example result:**
 🚀 **BULLISH** (89%)
-💡 "Bitcoin montre une forte dynamique hausssère avec l'approbation des ETF..."
+💡 "Bitcoin shows strong upward momentum with ETF approval..."
 
 ━━━━━━━━━━━━━━━━━━
-💼 **2. GESTION DE PORTFOLIO**
+💼 **2. PORTFOLIO MANAGEMENT**
 
-**Ajouter une position :**
+**Add position:**
 `/add BTC 1 45000`
-→ Ajoute 1 BTC acheté à $45,000
-→ Si tu détiens déjà du BTC, recalcule le prix moyen
+→ Adds 1 BTC bought at $45,000
+→ If you already hold BTC, recalculates average price
 
-**Voir ton portfolio :**
+**View portfolio:**
 `/portfolio`
-→ Affiche toutes tes positions avec :
-  • Quantité détenue
-  • Prix d'achat moyen
-  • Prix actuel (temps réel)
-  • Valeur actuelle
-  • P&L en $ et %
+→ Displays all positions with:
+  • Quantity held
+  • Average buy price
+  • Current price (real-time)
+  • Current value
+  • P&L in $ and %
 
-**Supprimer une position (totale) :**
+**Remove position (full):**
 `/remove BTC`
-→ Supprime complètement la position BTC
+→ Completely removes BTC position
 
-**Supprimer une position (partielle) :**
+**Remove position (partial):**
 `/remove BTC 0.3`
-→ Retire 0.3 BTC, garde le reste
+→ Removes 0.3 BTC, keeps the rest
 
-**Vendre une position (avec tracking P&L) :**
+**Sell position (with P&L tracking):**
 `/sell BTC 0.5 75000`
-→ Vend 0.5 BTC à $75,000
-→ Enregistre le P&L réalisé
-→ Garde la position restante si vente partielle
+→ Sells 0.5 BTC at $75,000
+→ Records realized P&L
+→ Keeps remaining position if partial sale
 
-**Résumé global :**
+**Global summary:**
 `/summary`
-→ Affiche ton P&L total sur tout le portfolio
-→ P&L réalisé vs non-réalisé
-→ Meilleur/pire performer
-→ Score diversification
+→ Shows total P&L across portfolio
+→ Realized vs unrealized P&L
+→ Best/worst performer
+→ Diversification score
 
-**Historique :**
+**History:**
 `/history`
-→ Les 5 dernières transactions (BUY/SELL/REMOVE)
+→ Last 5 transactions (BUY/SELL/REMOVE)
 
 ━━━━━━━━━━━━━━━━━━
-🚀 **CRYPTOS DISPONIBLES**
+🚀 **AVAILABLE CRYPTOS**
 
 Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), Cardano (ADA), Avalanche (AVAX), Polkadot (DOT), Polygon (MATIC), Chainlink (LINK), Uniswap (UNI), Cosmos (ATOM), Litecoin (LTC), Bitcoin Cash (BCH), Stellar (XLM)
 
 ━━━━━━━━━━━━━━━━━━
-🛠️ **INFOS TECHNIQUES**
+🛠️ **TECH INFO**
 
-• **Storage :** Redis (ultra-rapide)
-• **Prix :** CoinGecko API (temps réel)
-• **AI :** Perplexity API (analyse sentiment)
-• **Hosting :** Railway (24/7)
+• **Storage:** Redis (ultra-fast)
+• **Prices:** CoinGecko API (real-time)
+• **AI:** Perplexity API (sentiment analysis)
+• **Hosting:** Railway (24/7)
 
-_Retour au menu : `/start`_
+_Back to menu: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -240,6 +237,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response += "BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM"
         else:
             response = "💼 **Your Crypto Portfolio**\n"
+            response += "_Prices updated in real-time via CoinGecko_\n"
             
             for symbol, pos in portfolio["positions"].items():
                 qty = pos["quantity"]
@@ -252,12 +250,20 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Choose emoji based on P&L
                 pnl_emoji = "🟢" if pnl_percent > 0 else ("🔴" if pnl_percent < 0 else "⚪")
                 
+                # Check if price is available
+                if current_price is None or current_price == 0:
+                    price_display = "n/a (price feed error)"
+                    pnl_display = "n/a"
+                else:
+                    price_display = format_price(current_price)
+                    pnl_display = f"{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)"
+                
                 response += f"\n**{symbol}** {pnl_emoji}\n"
                 response += f"  • Quantity: `{qty:.8g}`\n"
                 response += f"  • Avg Price: `{format_price(avg_price)}`\n"
-                response += f"  • Current: `{format_price(current_price)}`\n"
-                response += f"  • Value: `{format_price(current_value)}`\n"
-                response += f"  • P&L: `{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)`"
+                response += f"  • Current: `{price_display}`\n"
+                response += f"  • Value: `{format_price(current_value) if current_value else 'n/a'}`\n"
+                response += f"  • P&L: `{pnl_display}`"
             
             response += f"\n\n**Total Value:** `{format_price(portfolio['total_current_value'])}`"
         
@@ -480,6 +486,7 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response += f"💵 **Capital:**\n"
         response += f"  • Invested: `{format_price(summary['total_invested'])}`\n"
         response += f"  • Current value: `{format_price(summary['total_current_value'])}`\n"
+        response += f"  • Active positions: `{summary['num_positions']}`\n"
         
         # Best/worst performers
         if summary["best_performer"]:
@@ -505,6 +512,7 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Error generating summary.", parse_mode='Markdown')
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Show last 5 transactions with enhanced formatting."""
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
         return
@@ -516,8 +524,10 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("📃 No transactions yet.", parse_mode='Markdown')
             return
         
-        response = "📃 **Last 5 Transactions**\n"
-        for tx in transactions:
+        response = "📃 **Transaction History**\n"
+        response += "_Last 5 operations_\n"
+        
+        for i, tx in enumerate(transactions, 1):
             action_emoji = {
                 "BUY": "🟢",
                 "SELL": "🔵",
@@ -525,16 +535,21 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "PARTIAL_REMOVE": "⚠️"
             }.get(tx['action'], "🔹")
             
-            response += f"\n{action_emoji} {tx['action']} `{tx['symbol']}`: {tx['quantity']:.8g} @ {format_price(tx['price'])}"
+            response += f"\n**{i}.** {action_emoji} {tx['action']} `{tx['symbol']}`\n"
+            response += f"   Qty: `{tx['quantity']:.8g}` @ `{format_price(tx['price'])}`"
             
             # Show P&L for sells
-            if 'pnl' in tx:
+            if 'pnl' in tx and tx['pnl'] is not None:
                 pnl_emoji = "🟢" if tx['pnl'] > 0 else "🔴"
-                response += f" {pnl_emoji} P&L: `{tx['pnl']:+,.2f}`"
+                response += f"\n   {pnl_emoji} P&L: `{tx['pnl']:+,.2f} USD`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
+        logger.info(f"✅ /history sent to {user_id}")
+        
     except Exception as e:
         logger.error(f"❌ /history error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error loading history.", parse_mode='Markdown')
 
 async def analyze_url(update: Update, url: str):
