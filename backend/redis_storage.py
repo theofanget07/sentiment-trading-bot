@@ -306,10 +306,11 @@ def set_alert(user_id: int, symbol: str, tp: Optional[float] = None, sl: Optiona
         symbol: Crypto symbol (BTC, ETH, etc.)
         tp: Take Profit price (optional)
         sl: Stop Loss price (optional)
-        update_only: If True, update existing alert. If False, create new or replace.
+        update_only: If True, keeps existing TP/SL when adding the other type.
+                    If False, replaces entire alert.
     
     Returns:
-        Dict with 'success', 'message', 'alert', 'requires_confirmation'
+        Dict with 'success', 'message', 'alert'
     """
     try:
         symbol = symbol.upper()
@@ -317,26 +318,9 @@ def set_alert(user_id: int, symbol: str, tp: Optional[float] = None, sl: Optiona
         # Get existing alert if any
         existing_alert = get_alert(user_id, symbol)
         
-        # If update_only and no existing alert, return error
-        if update_only and not existing_alert:
-            return {
-                "success": False,
-                "message": f"No existing alert found for {symbol}",
-                "requires_confirmation": False
-            }
-        
-        # Check if confirmation needed (existing alert will be modified)
-        if existing_alert and not update_only:
-            return {
-                "success": False,
-                "message": "Alert already exists. Use update command to modify.",
-                "existing_alert": existing_alert,
-                "requires_confirmation": True
-            }
-        
         # Prepare new alert structure
-        if existing_alert:
-            # Update existing alert (keep old values if not provided)
+        if existing_alert and update_only:
+            # Update mode: keep existing values, only update provided ones
             alert = existing_alert.copy()
             if tp is not None:
                 alert["tp"] = tp
@@ -344,7 +328,7 @@ def set_alert(user_id: int, symbol: str, tp: Optional[float] = None, sl: Optiona
                 alert["sl"] = sl
             alert["updated_at"] = datetime.utcnow().isoformat()
         else:
-            # Create new alert
+            # Create new or replace mode
             alert = {
                 "symbol": symbol,
                 "tp": tp,
