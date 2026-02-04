@@ -1,0 +1,7 @@
+# Railway Deployment Trigger
+# Last updated: 2026-02-04 17:25 CET
+# Reason: Force redeploy after Bonus Trade of the Day merge
+
+This file is used to trigger Railway redeployments when GitHub merge doesn't auto-trigger.
+
+Latest deploy: Bonus Trade of the Day feature complete
