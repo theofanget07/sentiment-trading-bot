@@ -1,11 +1,18 @@
+# Core dependencies
 python-telegram-bot==20.7
 fastapi==0.109.0
 uvicorn[standard]==0.25.0
 python-dotenv==1.0.0
 requests==2.31.0
+
+# Web scraping & parsing
 beautifulsoup4==4.12.2
-sqlalchemy==2.0.25
-psycopg2-binary==2.9.9
-alembic==1.13.1
+
+# Async tasks (Celery)
 celery==5.3.6
 redis==5.0.1
+
+# Removed PostgreSQL dependencies (migrated to Redis):
+# - sqlalchemy
+# - psycopg2-binary
+# - alembic
