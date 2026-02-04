@@ -119,7 +119,7 @@ class RedisStorage:
 # user:{user_id}:positions:{symbol} -> {"quantity": float, "avg_price": float}
 # user:{user_id}:transactions -> [{"symbol": str, "quantity": float, ...}]
 # user:{user_id}:realized_pnl -> [{"symbol": str, "quantity_sold": float, "pnl_realized": float, ...}]
-# user:{user_id}:alerts:{symbol} -> {"symbol": str, "price_threshold": float, "created_at": str}
+# user:{user_id}:alerts:{symbol} -> {"tp": float, "sl": float, "created_at": str}
 
 def get_user_profile(user_id: int) -> Optional[Dict]:
     """Get user profile from Redis."""
@@ -296,31 +296,88 @@ def get_total_realized_pnl(user_id: int) -> float:
         return 0.0
 
 
-# ===== PRICE ALERTS MANAGEMENT =====
+# ===== PRICE ALERTS MANAGEMENT (TP/SL SYSTEM) =====
 
-def set_alert(user_id: int, symbol: str, price_threshold: float) -> bool:
-    """Set a price alert for a user.
+def set_alert(user_id: int, symbol: str, tp: Optional[float] = None, sl: Optional[float] = None, update_only: bool = False) -> Dict:
+    """Set or update TP/SL price alert for a user.
     
     Args:
         user_id: User ID
         symbol: Crypto symbol (BTC, ETH, etc.)
-        price_threshold: Price to trigger alert
+        tp: Take Profit price (optional)
+        sl: Stop Loss price (optional)
+        update_only: If True, update existing alert. If False, create new or replace.
     
     Returns:
-        True if alert was set successfully
+        Dict with 'success', 'message', 'alert', 'requires_confirmation'
     """
     try:
-        alert = {
-            "symbol": symbol.upper(),
-            "price_threshold": price_threshold,
-            "created_at": datetime.utcnow().isoformat()
+        symbol = symbol.upper()
+        
+        # Get existing alert if any
+        existing_alert = get_alert(user_id, symbol)
+        
+        # If update_only and no existing alert, return error
+        if update_only and not existing_alert:
+            return {
+                "success": False,
+                "message": f"No existing alert found for {symbol}",
+                "requires_confirmation": False
+            }
+        
+        # Check if confirmation needed (existing alert will be modified)
+        if existing_alert and not update_only:
+            return {
+                "success": False,
+                "message": "Alert already exists. Use update command to modify.",
+                "existing_alert": existing_alert,
+                "requires_confirmation": True
+            }
+        
+        # Prepare new alert structure
+        if existing_alert:
+            # Update existing alert (keep old values if not provided)
+            alert = existing_alert.copy()
+            if tp is not None:
+                alert["tp"] = tp
+            if sl is not None:
+                alert["sl"] = sl
+            alert["updated_at"] = datetime.utcnow().isoformat()
+        else:
+            # Create new alert
+            alert = {
+                "symbol": symbol,
+                "tp": tp,
+                "sl": sl,
+                "created_at": datetime.utcnow().isoformat()
+            }
+        
+        # Validate at least one alert is set
+        if alert.get("tp") is None and alert.get("sl") is None:
+            return {
+                "success": False,
+                "message": "At least one alert (TP or SL) must be set",
+                "requires_confirmation": False
+            }
+        
+        # Save to Redis
+        redis_client.set(f"user:{user_id}:alerts:{symbol}", json.dumps(alert))
+        logger.info(f"✅ Alert set: User {user_id} - {symbol} (TP: {alert.get('tp')}, SL: {alert.get('sl')})")
+        
+        return {
+            "success": True,
+            "message": "Alert set successfully",
+            "alert": alert,
+            "requires_confirmation": False
         }
-        redis_client.set(f"user:{user_id}:alerts:{symbol.upper()}", json.dumps(alert))
-        logger.info(f"✅ Alert set: User {user_id} - {symbol} @ ${price_threshold}")
-        return True
+        
     except Exception as e:
         logger.error(f"Error setting alert: {e}")
-        return False
+        return {
+            "success": False,
+            "message": f"Error: {str(e)}",
+            "requires_confirmation": False
+        }
 
 def get_alerts(user_id: int) -> Dict[str, Dict]:
     """Get all active alerts for a user.
