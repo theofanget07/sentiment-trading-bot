@@ -3,13 +3,13 @@
 Provides utilities to send Telegram notifications from Celery tasks:
 - Price alerts
 - AI recommendations
-- Daily insights
+- Daily insights with position advice
 """
 
 import os
 import logging
 import requests
-from typing import Optional
+from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -115,8 +115,9 @@ class TelegramNotificationService:
         best_performer: str,
         best_performer_pct: float,
         news_summary: str,
+        position_advice: Optional[List[Dict]] = None,
     ) -> bool:
-        """Send daily portfolio insight notification.
+        """Send daily portfolio insight notification with AI position advice.
         
         Args:
             chat_id: Telegram chat ID
@@ -127,6 +128,7 @@ class TelegramNotificationService:
             best_performer: Best performing crypto
             best_performer_pct: Best performer % change
             news_summary: Market news summary
+            position_advice: List of position advice dicts (optional)
         
         Returns:
             True if sent successfully
@@ -134,6 +136,7 @@ class TelegramNotificationService:
         emoji_time = "🌅"
         emoji_trend = "📈" if change_24h > 0 else "📉" if change_24h < 0 else "➡️"
         
+        # Build base message
         message = f"""
 {emoji_time} **Good morning {username}!**
 
@@ -145,6 +148,23 @@ class TelegramNotificationService:
 
 🏆 Top Performer:
 • **{best_performer}**: `{best_performer_pct:+.2f}%`
+        """.strip()
+        
+        # Add position advice if available
+        if position_advice and len(position_advice) > 0:
+            message += "\n\n🎯 **AI POSITION ADVICE:**\n"
+            for advice in position_advice:
+                symbol = advice.get("symbol", "???")
+                pnl_pct = advice.get("pnl_pct", 0)
+                advice_text = advice.get("advice", "No advice available")
+                
+                pnl_emoji = "🟢" if pnl_pct > 0 else "🔴" if pnl_pct < -5 else "🟡"
+                
+                message += f"\n{pnl_emoji} **{symbol}** (`{pnl_pct:+.1f}%`)\n"
+                message += f"   💡 {advice_text}\n"
+        
+        # Add news summary
+        message += f"""
 
 📰 **Market News:**
 {news_summary}
