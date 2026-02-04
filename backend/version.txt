@@ -1,0 +1,26 @@
+Sentiment Trading Bot - Version Info
+====================================
+
+Last Deployment: 2026-02-04 21:33 CET
+Commit: Force Railway to detect Bonus Trade feature
+
+Active Features:
+- ✅ Feature 1: Price Alerts (TP/SL)
+- ✅ Feature 2: Enriched Portfolio Summary
+- ✅ Feature 3: Partial Sells & P&L Tracking
+- ✅ Feature 4: AI Recommendations (/recommend)
+- ✅ Feature 5: Daily Insights (8h00 CET)
+- ✅ BONUS: Trade of the Day (8h00 CET)
+
+Celery Beat Schedules (4 tasks):
+1. check-price-alerts → Every 15 minutes
+2. generate-ai-recommendations → Daily 8h00 CET
+3. send-daily-insights → Daily 8h00 CET
+4. bonus-trade-of-day → Daily 8h00 CET ⭐ NEW
+
+Next Scheduled Execution: 2026-02-05 08:00 CET
+
+---
+Deployment Method: GitHub auto-detect
+Railway Project: sentiment-trading-bot
+Environment: Production
