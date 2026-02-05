@@ -9,6 +9,7 @@ Provides a clean interface to interact with Perplexity AI API for:
 import os
 import logging
 import requests
+import re
 from typing import Dict, Optional, List
 
 logger = logging.getLogger(__name__)
@@ -155,17 +156,19 @@ Provide actionable insights for a retail investor.
             data = response.json()
             content = data["choices"][0]["message"]["content"]
             
-            # Parse recommendation
-            recommendation = "HOLD"
-            if "BUY" in content.upper():
-                recommendation = "BUY"
-            elif "SELL" in content.upper():
-                recommendation = "SELL"
+            # Parse recommendation with improved logic
+            recommendation = self._extract_recommendation(content)
+            confidence = self._extract_confidence(content)
+            
+            logger.info(
+                f"Parsed recommendation for {crypto_symbol}: {recommendation} "
+                f"(confidence: {confidence}%)"
+            )
             
             return {
                 "recommendation": recommendation,
                 "reasoning": content,
-                "confidence": 70,  # Default, can be parsed
+                "confidence": confidence,
                 "raw_response": content,
             }
         
@@ -177,6 +180,106 @@ Provide actionable insights for a retail investor.
                 "confidence": 0,
                 "raw_response": None,
             }
+    
+    def _extract_recommendation(self, content: str) -> str:
+        """Extract BUY/SELL/HOLD recommendation from AI response.
+        
+        Looks for structured format like:
+        - "1. Recommendation: BUY"
+        - "Recommendation: HOLD"
+        - "**Recommendation**: SELL"
+        
+        Args:
+            content: AI response text
+        
+        Returns:
+            'BUY', 'SELL', or 'HOLD'
+        """
+        # Try structured patterns first (highest priority)
+        patterns = [
+            r"1\.\s*Recommendation:\s*(BUY|SELL|HOLD)",  # "1. Recommendation: BUY"
+            r"Recommendation:\s*\*\*?(BUY|SELL|HOLD)\*\*?",  # "Recommendation: **BUY**"
+            r"\*\*Recommendation\*\*:\s*(BUY|SELL|HOLD)",  # "**Recommendation**: BUY"
+            r"Action:\s*(BUY|SELL|HOLD)",  # "Action: BUY"
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, content, re.IGNORECASE)
+            if match:
+                rec = match.group(1).upper()
+                logger.debug(f"Extracted recommendation '{rec}' using pattern: {pattern}")
+                return rec
+        
+        # Fallback: Look for standalone keywords (less reliable)
+        # But avoid false positives like "don't BUY" or "avoid SELL"
+        content_upper = content.upper()
+        
+        # Check for negative context
+        negative_patterns = [
+            r"DON'?T\s+(BUY|SELL)",
+            r"AVOID\s+(BUY|SELL)",
+            r"NOT\s+(BUY|SELL)",
+        ]
+        
+        for neg_pattern in negative_patterns:
+            if re.search(neg_pattern, content_upper):
+                logger.debug("Found negative context, defaulting to HOLD")
+                return "HOLD"
+        
+        # Count occurrences of each action
+        buy_count = len(re.findall(r'\bBUY\b', content_upper))
+        sell_count = len(re.findall(r'\bSELL\b', content_upper))
+        hold_count = len(re.findall(r'\bHOLD\b', content_upper))
+        
+        logger.debug(f"Keyword counts - BUY: {buy_count}, SELL: {sell_count}, HOLD: {hold_count}")
+        
+        # Return most frequent (with BUY/SELL priority over HOLD if tied)
+        if buy_count > sell_count and buy_count > hold_count:
+            return "BUY"
+        elif sell_count > buy_count and sell_count > hold_count:
+            return "SELL"
+        elif hold_count > 0:
+            return "HOLD"
+        
+        # Default to HOLD if nothing found
+        logger.warning("Could not extract clear recommendation, defaulting to HOLD")
+        return "HOLD"
+    
+    def _extract_confidence(self, content: str) -> int:
+        """Extract confidence score from AI response.
+        
+        Looks for patterns like:
+        - "Confidence: 75"
+        - "Confidence Score: 85"
+        - "75%"
+        - "Score: 80"
+        
+        Args:
+            content: AI response text
+        
+        Returns:
+            Confidence score (0-100), defaults to 60 if not found
+        """
+        patterns = [
+            r"Confidence(?:\s+Score)?:\s*(\d{1,3})",  # "Confidence: 75" or "Confidence Score: 75"
+            r"(\d{1,3})%",  # "75%"
+            r"Score:\s*(\d{1,3})",  # "Score: 80"
+        ]
+        
+        for pattern in patterns:
+            matches = re.findall(pattern, content, re.IGNORECASE)
+            for match in matches:
+                try:
+                    confidence = int(match)
+                    if 0 <= confidence <= 100:
+                        logger.debug(f"Extracted confidence {confidence}% using pattern: {pattern}")
+                        return confidence
+                except ValueError:
+                    continue
+        
+        # Default to medium confidence
+        logger.debug("Could not extract confidence, defaulting to 60%")
+        return 60
     
     def get_crypto_news_summary(self, crypto_symbols: List[str]) -> str:
         """Get latest news summary for multiple cryptos.
