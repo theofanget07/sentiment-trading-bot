@@ -255,39 +255,95 @@ Have a great day! 🚀
         # Action emoji
         action_emoji = "📈" if action == "BUY" else "📉" if action == "SELL" else "⚪"
         
-        # Build message
+        # Build message header
         message = f"""
 🏆 **BONUS TRADE OF THE DAY**
-━━━━━━━━━━━━━━━━━━
 
-{action_emoji} **{symbol}** - {action}
-
-💰 **Entry Price:** `${entry_price:,.2f}`
+{action_emoji} **{symbol} - {action}**
+💰 Entry: `${entry_price:,.2f}`
         """.strip()
         
-        # Add target & stop loss if provided
+        # Add target & stop loss with potential gains/losses
         if target_price:
             potential_gain = ((target_price - entry_price) / entry_price) * 100
-            message += f"\n🎯 **Target:** `${target_price:,.2f}` (`+{potential_gain:.1f}%`)"
+            message += f"\n🎯 Target: `${target_price:,.2f}` 🟢 `+{potential_gain:.1f}%`"
         
         if stop_loss:
             potential_loss = ((stop_loss - entry_price) / entry_price) * 100
-            message += f"\n🛑 **Stop Loss:** `${stop_loss:,.2f}` (`{potential_loss:.1f}%`)"
+            message += f"\n🛑 Stop: `${stop_loss:,.2f}` 🔴 `{potential_loss:.1f}%`"
         
-        message += f"""
-
-📊 **Confidence:** {confidence}%
-{risk_emoji} **Risk Level:** {risk_level}
-
-📝 **AI Analysis:**
-{reasoning}
-
-━━━━━━━━━━━━━━━━━━
-💡 _This is the top opportunity identified by AI from analyzing ALL supported cryptos._
-⚠️ _Always do your own research and manage risk carefully._
-        """.strip()
+        # Confidence and risk
+        message += f"\n\n📊 Confidence: **{confidence}%** | {risk_emoji} Risk: **{risk_level}**"
+        
+        # Extract and format key points from reasoning (max 3 bullets)
+        key_points = self._extract_key_points(reasoning, max_points=3)
+        
+        if key_points:
+            message += "\n\n💡 **Why this trade:**"
+            for point in key_points:
+                message += f"\n• {point}"
+        
+        # Compact disclaimer
+        message += "\n\n⚠️ _AI-generated. DYOR. Manage risk._"
         
         return self.send_message(chat_id, message)
+    
+    def _extract_key_points(self, reasoning: str, max_points: int = 3) -> List[str]:
+        """Extract key bullet points from AI reasoning.
+        
+        Args:
+            reasoning: Full AI analysis text
+            max_points: Maximum number of points to extract
+        
+        Returns:
+            List of concise key points (max 60 chars each)
+        """
+        # Look for bullet points or numbered lists
+        import re
+        
+        # Pattern for bullets: "• point" or "- point" or "* point"
+        bullet_pattern = r"^[•\-\*]\s+(.+)$"
+        
+        # Pattern for numbered: "1. point" or "1) point"
+        numbered_pattern = r"^\d+[.)]\s+(.+)$"
+        
+        points = []
+        
+        for line in reasoning.split("\n"):
+            line = line.strip()
+            
+            # Check bullet patterns
+            match = re.match(bullet_pattern, line)
+            if not match:
+                match = re.match(numbered_pattern, line)
+            
+            if match:
+                point = match.group(1).strip()
+                
+                # Clean up markdown
+                point = re.sub(r"\*\*(.+?)\*\*", r"\1", point)  # Remove **bold**
+                point = re.sub(r"__(.+?)__", r"\1", point)  # Remove __underline__
+                
+                # Shorten if needed
+                if len(point) > 60:
+                    point = point[:57] + "..."
+                
+                points.append(point)
+                
+                if len(points) >= max_points:
+                    break
+        
+        # If no bullets found, try to extract first 3 sentences
+        if not points:
+            sentences = re.split(r"[.!?]\s+", reasoning)
+            for sentence in sentences[:max_points]:
+                sentence = sentence.strip()
+                if len(sentence) > 10:  # Skip very short sentences
+                    if len(sentence) > 60:
+                        sentence = sentence[:57] + "..."
+                    points.append(sentence)
+        
+        return points
 
 
 # Singleton instance

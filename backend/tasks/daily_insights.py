@@ -28,7 +28,7 @@ def send_daily_portfolio_insights() -> Dict:
     Returns:
         Dict with task execution summary
     """
-    logger.info("[TASK] Starting daily portfolio insights...")
+    logger.info("[DAILY INSIGHTS] Starting task...")
     
     storage = RedisStorage()
     perplexity = get_perplexity_client()
@@ -37,41 +37,79 @@ def send_daily_portfolio_insights() -> Dict:
     insights_sent = 0
     users_processed = 0
     errors = 0
+    skipped_no_portfolio = 0
+    skipped_errors = 0
     
     try:
         # Get all user IDs
         user_ids = storage.get_all_user_ids()
-        logger.info(f"Sending daily insights to {len(user_ids)} users")
+        logger.info(f"[DAILY INSIGHTS] Found {len(user_ids)} users to process")
+        
+        if not user_ids:
+            logger.warning("[DAILY INSIGHTS] No users found in database")
+            return {
+                "status": "completed",
+                "users_processed": 0,
+                "insights_sent": 0,
+                "note": "No users in database",
+            }
         
         for user_id in user_ids:
             try:
                 users_processed += 1
                 chat_id = int(user_id.replace("user:", ""))
                 
+                logger.debug(f"[DAILY INSIGHTS] Processing user {chat_id}...")
+                
                 # Get user's portfolio
                 portfolio = storage.get_portfolio(chat_id)
-                if not portfolio:
-                    logger.debug(f"User {chat_id} has no portfolio, skipping")
+                if not portfolio or len(portfolio) == 0:
+                    logger.info(f"[DAILY INSIGHTS] User {chat_id} has no portfolio, skipping")
+                    skipped_no_portfolio += 1
                     continue
+                
+                logger.debug(f"[DAILY INSIGHTS] User {chat_id} has {len(portfolio)} positions")
                 
                 # Get username (from Redis or default)
                 username = storage.get_user_data(chat_id, "username") or "User"
                 
                 # Calculate portfolio metrics
+                logger.debug(f"[DAILY INSIGHTS] Calculating metrics for user {chat_id}...")
                 metrics = calculate_portfolio_metrics(portfolio)
                 
                 if not metrics:
-                    logger.warning(f"Could not calculate metrics for user {chat_id}")
+                    logger.warning(
+                        f"[DAILY INSIGHTS] Could not calculate metrics for user {chat_id} "
+                        f"(portfolio: {list(portfolio.keys())})"
+                    )
+                    skipped_errors += 1
                     continue
                 
+                logger.debug(
+                    f"[DAILY INSIGHTS] User {chat_id} metrics: "
+                    f"Value=${metrics['total_value']:.2f}, Change={metrics['change_24h_pct']:+.2f}%"
+                )
+                
                 # Get market news summary
+                logger.debug(f"[DAILY INSIGHTS] Fetching news for user {chat_id}...")
                 symbols = list(portfolio.keys())
-                news_summary = perplexity.get_crypto_news_summary(symbols)
+                try:
+                    news_summary = perplexity.get_crypto_news_summary(symbols)
+                except Exception as e:
+                    logger.error(f"[DAILY INSIGHTS] News fetch failed for user {chat_id}: {e}")
+                    news_summary = "Market news unavailable at this time."
                 
                 # Generate AI advice for each position
-                position_advice = generate_position_advice(portfolio, perplexity)
+                logger.debug(f"[DAILY INSIGHTS] Generating AI advice for user {chat_id}...")
+                try:
+                    position_advice = generate_position_advice(portfolio, perplexity)
+                    logger.debug(f"[DAILY INSIGHTS] Generated {len(position_advice)} advice items")
+                except Exception as e:
+                    logger.error(f"[DAILY INSIGHTS] Advice generation failed for user {chat_id}: {e}")
+                    position_advice = []
                 
                 # Send daily insight notification
+                logger.debug(f"[DAILY INSIGHTS] Sending notification to user {chat_id}...")
                 success = notification_service.send_daily_insight(
                     chat_id=chat_id,
                     username=username,
@@ -86,24 +124,37 @@ def send_daily_portfolio_insights() -> Dict:
                 
                 if success:
                     insights_sent += 1
-                    logger.info(f"Sent daily insight to user {chat_id}")
+                    logger.info(f"[DAILY INSIGHTS] ✅ Successfully sent to user {chat_id}")
+                else:
+                    logger.error(f"[DAILY INSIGHTS] ❌ Failed to send to user {chat_id}")
+                    errors += 1
             
             except Exception as e:
-                logger.error(f"Error processing daily insight for user {user_id}: {e}")
+                logger.error(
+                    f"[DAILY INSIGHTS] Error processing user {user_id}: {e}",
+                    exc_info=True
+                )
                 errors += 1
         
         result = {
             "status": "completed",
             "users_processed": users_processed,
             "insights_sent": insights_sent,
+            "skipped_no_portfolio": skipped_no_portfolio,
+            "skipped_errors": skipped_errors,
             "errors": errors,
         }
         
-        logger.info(f"[TASK] Daily portfolio insights completed: {result}")
+        logger.info(
+            f"[DAILY INSIGHTS] Task completed: "
+            f"{insights_sent}/{users_processed} sent, "
+            f"{skipped_no_portfolio} no portfolio, "
+            f"{errors} errors"
+        )
         return result
     
     except Exception as e:
-        logger.error(f"[TASK] Daily portfolio insights failed: {e}")
+        logger.error(f"[DAILY INSIGHTS] Task failed: {e}", exc_info=True)
         return {
             "status": "failed",
             "error": str(e),
@@ -127,17 +178,22 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
         best_performer = None
         best_performer_pct = -999.0
         
+        prices_fetched = 0
+        
         for symbol, position in portfolio.items():
             # Get current price
             current_price = get_crypto_price(symbol)
             if not current_price:
-                logger.warning(f"Could not fetch price for {symbol}, skipping")
+                logger.warning(f"Could not fetch price for {symbol}, skipping position")
                 continue
+            
+            prices_fetched += 1
             
             buy_price = position.get("buy_price", 0)
             qty = position.get("qty", 0)
             
             if buy_price <= 0 or qty <= 0:
+                logger.warning(f"Invalid position data for {symbol}: buy_price={buy_price}, qty={qty}")
                 continue
             
             # Calculate position value
@@ -153,7 +209,11 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
                 best_performer = symbol
                 best_performer_pct = pnl_pct
         
-        if total_value == 0:
+        if total_value == 0 or prices_fetched == 0:
+            logger.warning(
+                f"Portfolio metrics incomplete: total_value={total_value}, "
+                f"prices_fetched={prices_fetched}/{len(portfolio)}"
+            )
             return None
         
         # Calculate 24h change (approximation using current P&L)
@@ -169,7 +229,7 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
         }
     
     except Exception as e:
-        logger.error(f"Error calculating portfolio metrics: {e}")
+        logger.error(f"Error calculating portfolio metrics: {e}", exc_info=True)
         return None
 
 
@@ -187,37 +247,46 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
     
     try:
         for symbol, position in portfolio.items():
-            # Get current price
-            current_price = get_crypto_price(symbol)
-            if not current_price:
+            try:
+                # Get current price
+                current_price = get_crypto_price(symbol)
+                if not current_price:
+                    logger.warning(f"Skipping advice for {symbol}: price unavailable")
+                    continue
+                
+                buy_price = position.get("buy_price", 0)
+                qty = position.get("qty", 0)
+                
+                if buy_price <= 0 or qty <= 0:
+                    logger.warning(f"Skipping advice for {symbol}: invalid position data")
+                    continue
+                
+                # Calculate P&L
+                pnl_pct = ((current_price - buy_price) / buy_price) * 100
+                
+                # Generate concise advice using Perplexity
+                advice_text = get_quick_position_advice(
+                    perplexity, symbol, current_price, buy_price, pnl_pct
+                )
+                
+                advice_list.append({
+                    "symbol": symbol,
+                    "pnl_pct": pnl_pct,
+                    "current_price": current_price,
+                    "buy_price": buy_price,
+                    "advice": advice_text,
+                })
+                
+                logger.debug(f"Generated advice for {symbol}: {advice_text}")
+            
+            except Exception as e:
+                logger.error(f"Error generating advice for {symbol}: {e}")
                 continue
-            
-            buy_price = position.get("buy_price", 0)
-            qty = position.get("qty", 0)
-            
-            if buy_price <= 0 or qty <= 0:
-                continue
-            
-            # Calculate P&L
-            pnl_pct = ((current_price - buy_price) / buy_price) * 100
-            
-            # Generate concise advice using Perplexity
-            advice_text = get_quick_position_advice(
-                perplexity, symbol, current_price, buy_price, pnl_pct
-            )
-            
-            advice_list.append({
-                "symbol": symbol,
-                "pnl_pct": pnl_pct,
-                "current_price": current_price,
-                "buy_price": buy_price,
-                "advice": advice_text,
-            })
         
         return advice_list
     
     except Exception as e:
-        logger.error(f"Error generating position advice: {e}")
+        logger.error(f"Error generating position advice: {e}", exc_info=True)
         return []
 
 
