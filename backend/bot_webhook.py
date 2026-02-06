@@ -71,115 +71,162 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🤖 **CryptoSentinel AI**
 Your AI-powered crypto assistant
 
-⚠️ **Disclaimer:** This bot provides informational alerts and AI analysis only. NOT financial advice. You are fully responsible for your trading decisions. [More info](/help)
+⚠️ **Disclaimer:** This bot provides informational alerts and AI analysis only. NOT financial advice. [More info](/help)
 
 ━━━━━━━━━━━━━━━━━━
-🎯 **FEATURES**
+🎯 **MAIN COMMANDS**
 
-📊 **Analysis & Recommendations**
-• `/analyze <text>` - AI sentiment analysis
-• `/recommend` - Personalized trading insights
+📊 **Sentiment Analysis**
+• `/analyze` - AI-powered market analysis
+• `/recommend` - Get personalized insights
 
-💼 **Portfolio**
-• `/portfolio` - View positions & P&L
-• `/add BTC 0.5 45000` - Add position
-• `/sell BTC 0.5 75000` - Sell & track profit
-• `/summary` - Performance analytics
+💼 **Portfolio Tracking**
+• `/portfolio` - View your positions & P&L
+• `/add` - Add a crypto position
+• `/sell` - Sell and record profit/loss
+• `/summary` - Complete performance report
+• `/history` - Transaction history
 
 🔔 **Price Alerts**
-• `/setalert BTC tp 80000` - Take Profit
-• `/setalert BTC sl 70000` - Stop Loss
-• `/listalerts` - View active alerts
+• `/setalert` - Set Take Profit or Stop Loss
+• `/listalerts` - View all your alerts
+• `/removealert` - Delete an alert
 
-🔒 **Privacy (GDPR)**
-• `/mydata` - Export your data
-• `/deletedata` - Delete everything
+🔒 **Privacy & Data (GDPR)**
+• `/mydata` - Export all your data
+• `/deletedata` - Permanently delete account
 
 ━━━━━━━━━━━━━━━━━━
-📈 **Supported:** BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
+📖 **QUICK EXAMPLES**
+
+```
+/analyze Bitcoin ETF approval incoming
+/add BTC 0.5 45000
+/setalert BTC tp 100000
+/setalert BTC sl 40000
+/sell BTC 0.3 75000
+```
+
+━━━━━━━━━━━━━━━━━━
+📈 **Supported Cryptos**
+BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 📊 Data: [CoinGecko](https://coingecko.com) + [Perplexity AI](https://perplexity.ai)
 📄 [Terms](https://theofanget07.github.io/sentiment-trading-bot/terms) | [Privacy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
 
-_Type `/help` for complete guide_
+_Type `/help` for detailed guide_
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', disable_web_page_preview=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """📚 **Complete Guide**
+    help_text = """📚 **Complete User Guide**
 
 ━━━━━━━━━━━━━━━━━━
 🔍 **SENTIMENT ANALYSIS**
 
-AI-powered sentiment analysis (BULLISH/BEARISH/NEUTRAL) with confidence score.
+Get AI-powered sentiment analysis (BULLISH/BEARISH/NEUTRAL) with confidence scores.
 
-• `/analyze <text>` - Analyze any crypto news
-• Send a link - Auto-scrape & analyze
+**Commands:**
+• `/analyze <text>` - Analyze crypto news or market conditions
+• Send a URL - Auto-scrape article and analyze
 • Send text (30+ chars) - Auto-analyze
 
-━━━━━━━━━━━━━━━━━━
-💼 **PORTFOLIO**
+**Examples:**
+```
+/analyze Bitcoin ETF approval boosts institutional adoption
+/analyze Ethereum merge completes successfully
+```
 
-• `/add BTC 1 45000` - Add position (recalculates avg price)
+━━━━━━━━━━━━━━━━━━
+💼 **PORTFOLIO MANAGEMENT**
+
+Track your crypto holdings with real-time P&L calculations.
+
+**Commands:**
+• `/add <symbol> <quantity> <price>` - Add/update position
 • `/portfolio` - View all positions with P&L
-• `/remove BTC` - Remove all BTC
-• `/remove BTC 0.3` - Partial removal
-• `/sell BTC 0.5 75000` - Sell & record realized P&L
-• `/summary` - Total P&L (realized + unrealized)
+• `/remove <symbol> [quantity]` - Remove position (full or partial)
+• `/sell <symbol> <quantity> <price>` - Sell and record realized P&L
+• `/summary` - Global performance analytics
 • `/history` - Last 5 transactions
+
+**Examples:**
+```
+/add BTC 1 45000
+/add ETH 10 2500
+/remove BTC 0.3
+/sell BTC 0.5 75000
+```
 
 ━━━━━━━━━━━━━━━━━━
 🔔 **PRICE ALERTS (TP/SL)**
 
-• `/setalert BTC tp 80000` - Take Profit above price
-• `/setalert BTC sl 70000` - Stop Loss below price
-• `/listalerts` - View all alerts
-• `/removealert BTC` - Delete alerts
+Set Take Profit (TP) and Stop Loss (SL) alerts. Monitored every 15 minutes.
 
-⚡ Automated monitoring every 15 min
+**Commands:**
+• `/setalert <symbol> tp <price>` - Take Profit (above current)
+• `/setalert <symbol> sl <price>` - Stop Loss (below current)
+• `/listalerts` - View all active alerts
+• `/removealert <symbol>` - Delete all alerts for a crypto
+
+**Examples:**
+```
+/setalert BTC tp 100000
+/setalert BTC sl 40000
+/setalert ETH tp 5000
+/removealert BTC
+```
+
+💡 **You can set BOTH TP and SL independently for the same crypto!**
 
 ━━━━━━━━━━━━━━━━━━
 🤖 **AI RECOMMENDATIONS**
 
-• `/recommend` - Personalized insights based on:
-  - Your portfolio composition
-  - Market sentiment
-  - Risk assessment
+Get personalized trading insights based on your portfolio.
 
-⚠️ For informational purposes only. NOT financial advice.
+**Command:**
+• `/recommend` - AI-powered analysis of:
+  - Portfolio composition & diversification
+  - Market sentiment for your holdings
+  - Risk assessment & suggestions
+
+⚠️ **Remember:** For informational purposes only. NOT financial advice.
 
 ━━━━━━━━━━━━━━━━━━
 🔒 **YOUR DATA (GDPR)**
 
-• `/mydata` - Download all data (JSON)
-• `/deletedata` - Permanently delete account
+Full GDPR compliance with complete data control.
 
-**Auto-deletion:** Inactive accounts deleted after 180 days
+**Commands:**
+• `/mydata` - Download all your data (JSON format)
+• `/deletedata` - Permanently delete your account
 
-**Your rights (GDPR):**
-• Right to access (Art. 15)
-• Right to erasure (Art. 17)
-• Right to portability (Art. 20)
+**Your Rights:**
+• Right to access (Art. 15) - Download everything
+• Right to erasure (Art. 17) - Delete everything
+• Right to portability (Art. 20) - Export to JSON
+• Auto-deletion after 180 days of inactivity
 
-[Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
+[Full Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
 
 ━━━━━━━━━━━━━━━━━━
-🚀 **CRYPTOS**
+🚀 **SUPPORTED CRYPTOS**
 
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 ━━━━━━━━━━━━━━━━━━
-⚠️ **DISCLAIMER**
+⚠️ **RISK DISCLAIMER**
 
 This bot provides informational services ONLY.
 • NOT financial advice
-• Trading crypto = high risk of loss
-• You may lose your entire investment
+• Crypto trading = HIGH RISK
+• You may lose your ENTIRE investment
 • Always DYOR (Do Your Own Research)
 
 [Terms of Service](https://theofanget07.github.io/sentiment-trading-bot/terms)
 
-_Back: `/start`_
+━━━━━━━━━━━━━━━━━━
+_Back to main menu: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
 
@@ -188,7 +235,9 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not user_text or len(user_text) < 10:
         await update.message.reply_text(
             "⚠️ Please provide text to analyze.\n\n"
-            "**Example:** `/analyze Bitcoin surges as ETFs see record inflows`",
+            "**Examples:**\n"
+            "`/analyze Bitcoin surges as ETFs see record inflows`\n"
+            "`/analyze Ethereum merge completes successfully`",
             parse_mode='Markdown'
         )
         return
@@ -223,8 +272,9 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not portfolio["positions"]:
             response = "💼 **Your Crypto Portfolio**\n\n"
             response += "_Your portfolio is empty._\n\n"
-            response += "To add positions, use:\n"
-            response += "`/add BTC 0.5 45000`\n\n"
+            response += "**Add positions with:**\n"
+            response += "`/add BTC 0.5 45000`\n"
+            response += "`/add ETH 10 2500`\n\n"
             response += "**Supported cryptos:**\n"
             response += "BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM"
         else:
@@ -286,7 +336,9 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 3:
         await update.message.reply_text(
             "⚠️ **Usage:** `/add <symbol> <quantity> <price>`\n\n"
-            "**Example:** `/add BTC 0.5 45000`",
+            "**Examples:**\n"
+            "`/add BTC 0.5 45000` - Buy 0.5 BTC at $45,000\n"
+            "`/add ETH 10 2500` - Buy 10 ETH at $2,500",
             parse_mode='Markdown'
         )
         return
@@ -341,7 +393,7 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "⚠️ **Usage:** `/remove <symbol> [quantity]`\n\n"
             "**Examples:**\n"
             "`/remove BTC` - Remove all BTC\n"
-            "`/remove BTC 0.5` - Remove 0.5 BTC only",
+            "`/remove BTC 0.5` - Remove only 0.5 BTC",
             parse_mode='Markdown'
         )
         return
@@ -396,8 +448,10 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args) != 3:
         await update.message.reply_text(
             "⚠️ **Usage:** `/sell <symbol> <quantity> <sell_price>`\n\n"
-            "**Example:** `/sell BTC 0.5 75000`\n"
-            "Sells 0.5 BTC at $75,000 and records realized P&L",
+            "**Examples:**\n"
+            "`/sell BTC 0.5 75000` - Sell 0.5 BTC at $75,000\n"
+            "`/sell ETH 5 3500` - Sell 5 ETH at $3,500\n\n"
+            "💡 Automatically records realized P&L for tracking",
             parse_mode='Markdown'
         )
         return
@@ -461,7 +515,7 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if summary["num_positions"] == 0:
             await update.message.reply_text(
-                "📊 **Portfolio Empty**\n\nUse `/add` to start.",
+                "📊 **Portfolio Empty**\n\nUse `/add BTC 0.5 45000` to start tracking!",
                 parse_mode='Markdown'
             )
             return
@@ -514,7 +568,7 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         transactions = portfolio_manager.get_transactions(user_id, limit=5)
         if not transactions:
-            await update.message.reply_text("📃 No transactions yet.", parse_mode='Markdown')
+            await update.message.reply_text("📃 No transactions yet.\n\nUse `/add BTC 0.5 45000` to get started!", parse_mode='Markdown')
             return
         
         response = "📃 **Transaction History**\n"
@@ -560,9 +614,10 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "⚠️ **Usage:** `/setalert <symbol> <tp|sl> <price>`\n\n"
             "**Examples:**\n"
-            "`/setalert BTC tp 80000` - Set Take Profit at $80,000\n"
-            "`/setalert BTC sl 70000` - Set Stop Loss at $70,000\n\n"
-            "💡 **You can set both TP and SL independently**",
+            "`/setalert BTC tp 100000` - Take Profit at $100k\n"
+            "`/setalert BTC sl 40000` - Stop Loss at $40k\n"
+            "`/setalert ETH tp 5000` - Take Profit ETH at $5k\n\n"
+            "💡 **You can set BOTH TP and SL independently**",
             parse_mode='Markdown'
         )
         return
@@ -714,9 +769,9 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if not alerts:
             response = "🔔 **Your Price Alerts**\n\n"
             response += "_You have no active alerts._\n\n"
-            response += "Set one with:\n"
-            response += "`/setalert BTC tp 80000`\n"
-            response += "`/setalert BTC sl 70000`"
+            response += "**Set alerts with:**\n"
+            response += "`/setalert BTC tp 100000`\n"
+            response += "`/setalert BTC sl 40000`"
         else:
             response = "🔔 **Your Price Alerts**\n"
             response += f"_Active alerts: {len(alerts)}_\n"
@@ -777,8 +832,8 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     if len(context.args) != 1:
         await update.message.reply_text(
             "⚠️ **Usage:** `/removealert <symbol>`\n\n"
-            "**Example:** `/removealert BTC`\n"
-            "This will remove both TP and SL alerts for BTC",
+            "**Example:** `/removealert BTC`\n\n"
+            "This will remove BOTH TP and SL alerts for the crypto.",
             parse_mode='Markdown'
         )
         return
