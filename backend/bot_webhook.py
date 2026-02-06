@@ -50,21 +50,4 @@ except ImportError:
 load_dotenv()
 
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
-WEBHOOK_URL = os.getenv('WEBHOOK_URL')
-PORT = int(os.getenv('PORT', 8080))
-
-app = FastAPI()
-application = None
-
-# Command handlers
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    db_status = "✅ Online" if DB_AVAILABLE else "⚠️ Offline"
-    
-    welcome_text = f"""
+    format='%(asctime)s - %(name)s - %(levelname)s - %(level
