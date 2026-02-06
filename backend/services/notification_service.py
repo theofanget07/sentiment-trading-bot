@@ -5,6 +5,7 @@ Provides utilities to send Telegram notifications from Celery tasks:
 - AI recommendations
 - Daily insights with position advice
 - Bonus Trade of the Day
+- Morning Briefing (combines Daily Insights + Bonus Trade)
 """
 
 import os
@@ -67,6 +68,114 @@ class TelegramNotificationService:
             logger.error(f"Failed to send message to chat_id={chat_id}: {e}")
             return False
     
+    def send_morning_briefing(
+        self,
+        chat_id: int,
+        username: str,
+        total_value: float,
+        change_24h: float,
+        change_24h_pct: float,
+        best_performer: str,
+        best_performer_pct: float,
+        position_advice: List[Dict],
+        bonus_trade: Dict,
+        news_summary: str,
+    ) -> bool:
+        """Send comprehensive Morning Briefing combining Daily Insights + Bonus Trade.
+        
+        Args:
+            chat_id: Telegram chat ID
+            username: User's first name
+            total_value: Total portfolio value
+            change_24h: 24h change in USD
+            change_24h_pct: 24h change percentage
+            best_performer: Best performing crypto
+            best_performer_pct: Best performer % change
+            position_advice: List of position advice dicts
+            bonus_trade: Dict with bonus trade details (symbol, action, entry_price, etc.)
+            news_summary: Market news summary
+        
+        Returns:
+            True if sent successfully
+        """
+        emoji_time = "🌅"
+        emoji_trend = "📈" if change_24h > 0 else "📉" if change_24h < 0 else "➡️"
+        
+        # Build comprehensive morning message
+        message = f"""{emoji_time} **GOOD MORNING BRIEFING**
+
+📋 **YOUR PORTFOLIO (24h)**
+━━━━━━━━━━━━━━━━━━
+
+💰 Total Value: `${total_value:,.2f}`
+{emoji_trend} 24h Change: `${change_24h:+,.2f}` (`{change_24h_pct:+.2f}%`)
+
+🏆 Top Performer: **{best_performer}** (`{best_performer_pct:+.2f}%`)
+""".strip()
+        
+        # Add position advice
+        if position_advice and len(position_advice) > 0:
+            message += "\n\n━━━━━━━━━━━━━━━━━━\n\n🎯 **AI POSITION ADVICE**\n"
+            for advice in position_advice:
+                symbol = advice.get("symbol", "???")
+                pnl_pct = advice.get("pnl_pct", 0)
+                current_price = advice.get("current_price", 0)
+                advice_text = advice.get("advice", "No advice available")
+                
+                pnl_emoji = "🟢" if pnl_pct > 0 else "🔴" if pnl_pct < -5 else "🟡"
+                
+                message += f"\n{pnl_emoji} **{symbol}** (`{pnl_pct:+.1f}%`) | `${current_price:,.2f}`\n"
+                message += f"   💡 {advice_text}\n"
+            
+            message += "\n💬 _Want detailed analysis? Use /recommend [CRYPTO]_"
+        
+        # Add Bonus Trade section
+        message += "\n\n━━━━━━━━━━━━━━━━━━\n\n🏆 **BONUS TRADE OF THE DAY**\n"
+        
+        symbol = bonus_trade.get("symbol", "???")
+        action = bonus_trade.get("action", "BUY")
+        entry_price = bonus_trade.get("entry_price", 0)
+        confidence = bonus_trade.get("confidence", 70)
+        risk_level = bonus_trade.get("risk_level", "MEDIUM")
+        reasoning = bonus_trade.get("reasoning", "")
+        
+        # Action emoji
+        action_emoji = "📈" if action == "BUY" else "📉" if action == "SELL" else "⚪"
+        
+        # Risk emoji
+        risk_emoji = {
+            "LOW": "🟢",
+            "MEDIUM": "🟡",
+            "HIGH": "🔴",
+        }.get(risk_level, "⚪")
+        
+        message += f"\n{action_emoji} **{symbol} - {action}**"
+        message += f"\n💰 Entry: `${entry_price:,.2f}`"
+        message += f"\n\n📋 Confidence: **{confidence}%** | {risk_emoji} Risk: **{risk_level}**"
+        
+        # Extract key points from reasoning
+        key_points = self._extract_key_points(reasoning, max_points=3)
+        
+        if key_points:
+            message += "\n\n💡 **Why this trade:**"
+            for point in key_points:
+                message += f"\n• {point}"
+        
+        message += "\n\n⚠️ _AI-generated. DYOR. Manage risk._"
+        
+        # Add market news
+        message += f"""
+
+━━━━━━━━━━━━━━━━━━
+
+📰 **Market News:**
+{news_summary}
+
+Have a profitable day! 🚀
+""".strip()
+        
+        return self.send_message(chat_id, message)
+    
     def send_price_alert(
         self,
         chat_id: int,
@@ -95,7 +204,7 @@ class TelegramNotificationService:
         message = f"""
 {emoji} **PRICE ALERT: {crypto_symbol}** {direction}
 
-📊 Position Details:
+📋 Position Details:
 • Buy Price: `${buy_price:,.2f}`
 • Current: `${current_price:,.2f}`
 • Change: `{pnl_pct:+.2f}%`
@@ -120,6 +229,9 @@ class TelegramNotificationService:
     ) -> bool:
         """Send daily portfolio insight notification with AI position advice.
         
+        DEPRECATED: Use send_morning_briefing() instead (combines with bonus trade).
+        Kept for backward compatibility.
+        
         Args:
             chat_id: Telegram chat ID
             username: User's first name
@@ -141,7 +253,7 @@ class TelegramNotificationService:
         message = f"""
 {emoji_time} **Good morning {username}!**
 
-📊 **PORTFOLIO UPDATE (24h)**
+📋 **PORTFOLIO UPDATE (24h)**
 ━━━━━━━━━━━━━━━━━━
 
 💰 Total Value: `${total_value:,.2f}`
@@ -231,6 +343,9 @@ Have a great day! 🚀
     ) -> bool:
         """Send Bonus Trade of the Day notification.
         
+        DEPRECATED: Use send_morning_briefing() instead (combines with daily insights).
+        Kept for backward compatibility.
+        
         Args:
             chat_id: Telegram chat ID
             symbol: Crypto symbol (e.g., 'BTC')
@@ -273,7 +388,7 @@ Have a great day! 🚀
             message += f"\n🛑 Stop: `${stop_loss:,.2f}` 🔴 `{potential_loss:.1f}%`"
         
         # Confidence and risk
-        message += f"\n\n📊 Confidence: **{confidence}%** | {risk_emoji} Risk: **{risk_level}**"
+        message += f"\n\n📋 Confidence: **{confidence}%** | {risk_emoji} Risk: **{risk_level}**"
         
         # Extract and format key points from reasoning (max 3 bullets)
         key_points = self._extract_key_points(reasoning, max_points=3)
