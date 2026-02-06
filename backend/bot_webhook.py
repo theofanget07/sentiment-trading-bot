@@ -11,7 +11,7 @@ from io import BytesIO
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import HTMLResponse
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
 import sys
@@ -47,6 +47,15 @@ try:
     from backend.recommend_handler import recommend_command as recommend_handler_fn
 except ImportError:
     from recommend_handler import recommend_command as recommend_handler_fn
+
+# Stripe integration for Premium subscriptions
+try:
+    from backend.stripe_service import create_checkout_session, get_subscription_status, retrieve_subscription
+    STRIPE_AVAILABLE = True
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ Stripe service not available - Premium subscriptions disabled")
+    STRIPE_AVAILABLE = False
 
 load_dotenv()
 
@@ -92,6 +101,10 @@ Your AI-powered crypto assistant
 • `/setalert` - Set Take Profit or Stop Loss
 • `/listalerts` - View all your alerts
 • `/removealert` - Delete an alert
+
+💳 **Premium Subscription**
+• `/subscribe` - Upgrade to Premium (€9/month)
+• `/manage` - Manage your subscription
 
 🔒 **Privacy & Data (GDPR)**
 • `/mydata` - Export all your data
@@ -192,6 +205,22 @@ Get personalized trading insights based on your portfolio.
   - Risk assessment & suggestions
 
 ⚠️ **Remember:** For informational purposes only. NOT financial advice.
+
+━━━━━━━━━━━━━━━━━━
+💳 **PREMIUM SUBSCRIPTION**
+
+Unlock advanced features with Premium at €9/month.
+
+**Commands:**
+• `/subscribe` - Upgrade to Premium
+• `/manage` - View and manage subscription
+
+**Premium Benefits:**
+✅ Unlimited portfolio tracking
+✅ Advanced AI recommendations
+✅ Real-time alerts (TP/SL)
+✅ Priority support
+✅ Early access to new features
 
 ━━━━━━━━━━━━━━━━━━
 🔒 **YOUR DATA (GDPR)**
@@ -891,6 +920,131 @@ async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         format_price
     )
 
+# ===== STRIPE PREMIUM SUBSCRIPTION COMMANDS =====
+
+async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for /subscribe - Create Stripe checkout session."""
+    if not STRIPE_AVAILABLE:
+        await update.message.reply_text(
+            "⚠️ **Premium subscriptions temporarily unavailable**\n\n"
+            "Please try again later or contact support.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    chat_id = update.effective_chat.id
+    username = update.effective_user.username
+    
+    logger.info(f"💳 /subscribe called by user {chat_id} (@{username})")
+    
+    # Check if user is already premium
+    status = get_subscription_status(chat_id)
+    
+    if status == 'premium':
+        await update.message.reply_text(
+            "✅ **You're already Premium!**\n\n"
+            "Use `/manage` to manage your subscription.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Create Stripe Checkout session
+    result = create_checkout_session(
+        user_id=chat_id,
+        username=username
+    )
+    
+    if result['success']:
+        # Create inline button with payment link
+        keyboard = [[
+            InlineKeyboardButton(
+                "🔥 Subscribe Now - €9/month",
+                url=result['url']
+            )
+        ]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            "🔒 **Upgrade to Premium**\n\n"
+            "**€9/month** - Cancel anytime\n\n"
+            "**Premium Features:**\n"
+            "✅ Unlimited portfolio tracking\n"
+            "✅ AI-powered recommendations\n"
+            "✅ Real-time sentiment alerts\n"
+            "✅ Advanced analytics\n"
+            "✅ Priority support\n\n"
+            "*Click below to subscribe securely via Stripe*",
+            reply_markup=reply_markup,
+            parse_mode='Markdown'
+        )
+        
+        logger.info(f"✅ Checkout session created for user {chat_id}: {result['session_id']}")
+    
+    else:
+        logger.error(f"❌ Failed to create checkout session: {result['error']}")
+        await update.message.reply_text(
+            "❌ **Payment setup error**\n\n"
+            "Sorry, we couldn't create your payment session. "
+            "Please try again later or contact support.\n\n"
+            f"Error: {result['error']}",
+            parse_mode='Markdown'
+        )
+
+async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handler for /manage - Manage existing subscription."""
+    if not STRIPE_AVAILABLE:
+        await update.message.reply_text(
+            "⚠️ **Subscription management temporarily unavailable**\n\n"
+            "Please try again later or contact support.",
+            parse_mode='Markdown'
+        )
+        return
+    
+    chat_id = update.effective_chat.id
+    
+    status = get_subscription_status(chat_id)
+    
+    if status != 'premium':
+        await update.message.reply_text(
+            "⚠️ **You don't have an active subscription**\n\n"
+            "Use `/subscribe` to upgrade to Premium!",
+            parse_mode='Markdown'
+        )
+        return
+    
+    # Retrieve subscription details
+    sub_result = retrieve_subscription(chat_id)
+    
+    if sub_result['success']:
+        sub = sub_result['subscription']
+        renewal_date = datetime.fromtimestamp(sub['current_period_end']).strftime('%d %b %Y')
+        
+        message_text = (
+            "✅ **Premium Subscription Active**\n\n"
+            f"**Status:** {sub['status'].title()}\n"
+            f"**Next renewal:** {renewal_date}\n"
+            f"**Price:** €9/month\n\n"
+        )
+        
+        if sub['cancel_at_period_end']:
+            cancel_date = datetime.fromtimestamp(sub['cancel_at']).strftime('%d %b %Y')
+            message_text += f"⚠️ **Subscription will end on:** {cancel_date}\n\n"
+        
+        message_text += (
+            "To cancel or update your subscription, "
+            "please contact support at:\n"
+            "📧 cryptosentinel.contact@gmail.com\n\n"
+            "_We'll add a self-service portal soon!_"
+        )
+        
+        await update.message.reply_text(message_text, parse_mode='Markdown')
+    else:
+        await update.message.reply_text(
+            "❌ **Could not retrieve subscription details**\n\n"
+            "Please contact support for assistance.",
+            parse_mode='Markdown'
+        )
+
 # ===== GDPR DATA COMMANDS =====
 
 async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1097,7 +1251,7 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "Sentiment Trading Bot Running", "db": DB_AVAILABLE}
+    return {"status": "ok", "message": "Sentiment Trading Bot Running", "db": DB_AVAILABLE, "stripe": STRIPE_AVAILABLE}
 
 @app.get("/health")
 async def health():
@@ -1105,10 +1259,12 @@ async def health():
     return {
         "status": "ok", 
         "db_connected": DB_AVAILABLE,
+        "stripe_enabled": STRIPE_AVAILABLE,
         "features": {
             "sentiment": "online",
             "portfolio": "online" if DB_AVAILABLE else "offline",
-            "alerts": "online" if DB_AVAILABLE else "offline"
+            "alerts": "online" if DB_AVAILABLE else "offline",
+            "premium": "online" if STRIPE_AVAILABLE else "offline"
         }
     }
 
@@ -1176,6 +1332,10 @@ async def setup_application():
     # AI Recommendations (Feature 4)
     application.add_handler(CommandHandler("recommend", recommend_command))
     
+    # Premium Subscription (Stripe)
+    application.add_handler(CommandHandler("subscribe", subscribe_command))
+    application.add_handler(CommandHandler("manage", manage_command))
+    
     # GDPR Data Commands
     application.add_handler(CommandHandler("mydata", mydata_command))
     application.add_handler(CommandHandler("deletedata", deletedata_command))
@@ -1211,6 +1371,12 @@ async def startup():
         logger.error(f"⚠️ Redis connection failed: {e}")
         logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio/Alerts)")
         DB_AVAILABLE = False
+    
+    # Log Stripe status
+    if STRIPE_AVAILABLE:
+        logger.info("✅ Stripe integration enabled")
+    else:
+        logger.warning("⚠️ Stripe integration disabled")
     
     await setup_application()
     logger.info("✅ Server ready")
