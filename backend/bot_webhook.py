@@ -5,6 +5,9 @@ Uses FastAPI for native async support.
 """
 import os
 import logging
+import json
+from datetime import datetime
+from io import BytesIO
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from telegram import Update
@@ -62,276 +65,121 @@ application = None
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    db_status = "✅ Online" if DB_AVAILABLE else "⚠️ Offline"
     
     welcome_text = f"""👋 **Welcome {user.first_name}!**
 
 🤖 **CryptoSentinel AI**
-Your AI crypto copilot for:
-• Sentiment analysis
-• Portfolio management
-• Price alerts
-• P&L tracking
+Your AI-powered crypto assistant
 
-⚠️ **IMPORTANT DISCLAIMER**
-
-CryptoSentinel AI provides INFORMATIONAL ALERTS and AI-powered analysis ONLY.
-
-🚫 This is NOT financial, investment, or trading advice.
-🚫 We do NOT manage your funds or execute trades.
-✅ You are solely responsible for your trading decisions.
-
-⚠️ **RISKS:**
-• Cryptocurrency markets are highly volatile
-• You may lose your ENTIRE investment
-• Past performance does NOT guarantee future results
-• AI recommendations are probabilistic, NOT guaranteed
-
-**NEVER invest more than you can afford to lose.**
+⚠️ **Disclaimer:** This bot provides informational alerts and AI analysis only. NOT financial advice. You are fully responsible for your trading decisions. [More info](/help)
 
 ━━━━━━━━━━━━━━━━━━
-🎯 **SENTIMENT ANALYSIS**
+🎯 **FEATURES**
 
-• `/analyze <text>`
-  AI analysis of crypto news or ideas.
-  _Example: `/analyze Bitcoin hits new ATH after ETF approval`_
+📊 **Analysis & Recommendations**
+• `/analyze <text>` - AI sentiment analysis
+• `/recommend` - Personalized trading insights
 
-• **Send an article link**
-  Bot scrapes and analyzes automatically.
+💼 **Portfolio**
+• `/portfolio` - View positions & P&L
+• `/add BTC 0.5 45000` - Add position
+• `/sell BTC 0.5 75000` - Sell & track profit
+• `/summary` - Performance analytics
 
-• **Send long text** (30+ chars)
-  Automatic analysis without command.
+🔔 **Price Alerts**
+• `/setalert BTC tp 80000` - Take Profit
+• `/setalert BTC sl 70000` - Stop Loss
+• `/listalerts` - View active alerts
 
-━━━━━━━━━━━━━━━━━━
-💼 **PORTFOLIO**
-
-• `/portfolio` – View your positions (quantities, prices, P&L)
-
-• `/add <SYMBOL> <quantity> <price>`
-  _Example: `/add BTC 0.5 45000`_
-
-• `/remove <SYMBOL> [quantity]`
-  _Example: `/remove BTC`_ (full removal)
-  _Example: `/remove BTC 0.5`_ (partial removal)
-
-• `/sell <SYMBOL> <quantity> <price>`
-  Sell and record **realized P&L**.
-  _Example: `/sell BTC 0.5 75000`_
-
-• `/summary` – Global overview (realized + unrealized, best/worst)
-
-• `/history` – Last 5 transactions
+🔒 **Privacy (GDPR)**
+• `/mydata` - Export your data
+• `/deletedata` - Delete everything
 
 ━━━━━━━━━━━━━━━━━━
-🔔 **PRICE ALERTS (TP/SL)**
+📈 **Supported:** BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
-• `/setalert <SYMBOL> tp <price>` - Set Take Profit
-  _Example: `/setalert BTC tp 80000`_
+📊 Data: [CoinGecko](https://coingecko.com) + [Perplexity AI](https://perplexity.ai)
+📄 [Terms](https://theofanget07.github.io/sentiment-trading-bot/terms) | [Privacy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
 
-• `/setalert <SYMBOL> sl <price>` - Set Stop Loss
-  _Example: `/setalert BTC sl 70000`_
-
-• `/listalerts` – View your active TP/SL alerts
-
-• `/removealert <SYMBOL>` – Delete all alerts for a symbol
-  _Example: `/removealert BTC`_
-
-━━━━━━━━━━━━━━━━━━
-🤖 **AI RECOMMENDATIONS**
-
-• `/recommend` – Get personalized AI trading insights
-  Based on your portfolio and market sentiment.
-
-━━━━━━━━━━━━━━━━━━
-🔒 **YOUR DATA & PRIVACY**
-
-• `/mydata` – Export all your data (GDPR)
-• `/deletedata` – Permanently delete your account
-
-We respect your privacy. Read our:
-📄 [Terms of Service](https://github.com/theofanget07/sentiment-trading-bot/blob/main/TERMS_OF_SERVICE.md)
-🔐 [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)
-
-━━━━━━━━━━━━━━━━━━
-📈 **SUPPORTED CRYPTOS**
-
-BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
-
-━━━━━━━━━━━━━━━━━━
-ℹ️ **Data Sources**
-
-• Crypto prices: [CoinGecko API](https://www.coingecko.com/en/api)
-• AI analysis: [Perplexity AI](https://www.perplexity.ai)
-
-_Prices may be delayed or inaccurate. We do NOT guarantee accuracy._
-
-━━━━━━━━━━━━━━━━━━
-
-**By using this bot, you agree to our Terms of Service and Privacy Policy.**
-
-_Type `/help` for detailed guide_
+_Type `/help` for complete guide_
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', disable_web_page_preview=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    help_text = """📚 **Complete Guide - Sentiment Trading Bot**
+    help_text = """📚 **Complete Guide**
 
 ━━━━━━━━━━━━━━━━━━
-🔍 **1. SENTIMENT ANALYSIS**
+🔍 **SENTIMENT ANALYSIS**
 
-The bot uses Perplexity AI to analyze crypto sentiment (BULLISH/BEARISH/NEUTRAL) with confidence score.
+AI-powered sentiment analysis (BULLISH/BEARISH/NEUTRAL) with confidence score.
 
-**Analysis methods:**
-• `/analyze <text>` - Analyze provided text
-• Send a link - Bot scrapes article automatically
-• Send long text - Auto-detection (30+ chars)
-
-**Example result:**
-🚀 **BULLISH** (89%)
-💡 "Bitcoin shows strong upward momentum with ETF approval..."
+• `/analyze <text>` - Analyze any crypto news
+• Send a link - Auto-scrape & analyze
+• Send text (30+ chars) - Auto-analyze
 
 ━━━━━━━━━━━━━━━━━━
-💼 **2. PORTFOLIO MANAGEMENT**
+💼 **PORTFOLIO**
 
-**Add position:**
-`/add BTC 1 45000`
-→ Adds 1 BTC bought at $45,000
-→ If you already hold BTC, recalculates average price
-
-**View portfolio:**
-`/portfolio`
-→ Displays all positions with:
-  • Quantity held
-  • Average buy price
-  • Current price (real-time)
-  • Current value
-  • P&L in $ and %
-
-**Remove position (full):**
-`/remove BTC`
-→ Completely removes BTC position
-
-**Remove position (partial):**
-`/remove BTC 0.3`
-→ Removes 0.3 BTC, keeps the rest
-
-**Sell position (with P&L tracking):**
-`/sell BTC 0.5 75000`
-→ Sells 0.5 BTC at $75,000
-→ Records realized P&L
-→ Keeps remaining position if partial sale
-
-**Global summary:**
-`/summary`
-→ Shows total P&L across portfolio
-→ Realized vs unrealized P&L
-→ Best/worst performer
-→ Diversification score
-
-**History:**
-`/history`
-→ Last 5 transactions (BUY/SELL/REMOVE)
+• `/add BTC 1 45000` - Add position (recalculates avg price)
+• `/portfolio` - View all positions with P&L
+• `/remove BTC` - Remove all BTC
+• `/remove BTC 0.3` - Partial removal
+• `/sell BTC 0.5 75000` - Sell & record realized P&L
+• `/summary` - Total P&L (realized + unrealized)
+• `/history` - Last 5 transactions
 
 ━━━━━━━━━━━━━━━━━━
-🔔 **3. PRICE ALERTS (TP/SL)**
+🔔 **PRICE ALERTS (TP/SL)**
 
-**Set Take Profit:**
-`/setalert BTC tp 80000`
-→ Get notified when BTC reaches $80,000 (above current price)
+• `/setalert BTC tp 80000` - Take Profit above price
+• `/setalert BTC sl 70000` - Stop Loss below price
+• `/listalerts` - View all alerts
+• `/removealert BTC` - Delete alerts
 
-**Set Stop Loss:**
-`/setalert BTC sl 70000`
-→ Get notified when BTC drops to $70,000 (below current price)
-
-**Set both TP and SL independently:**
-`/setalert BTC tp 80000`
-`/setalert BTC sl 70000`
-→ You can have both active for the same crypto
-
-**View active alerts:**
-`/listalerts`
-→ Shows all your TP/SL alerts with:
-  • Current price
-  • Alert price
-  • Status (waiting/reached)
-  • % to target
-
-**Remove all alerts for a crypto:**
-`/removealert BTC`
-→ Deletes both TP and SL for BTC
-
-**Validations:**
-• TP must be **above** current price
-• SL must be **below** current price
-• Cannot set duplicate TP or SL (must remove first)
-
-**How it works:**
-• Automated monitoring via Celery worker
-• Real-time prices from CoinGecko
-• Alerts checked every 15 minutes
-• Alert triggers once, then auto-deletes
+⚡ Automated monitoring every 15 min
 
 ━━━━━━━━━━━━━━━━━━
-🤖 **4. AI RECOMMENDATIONS**
+🤖 **AI RECOMMENDATIONS**
 
-`/recommend`
-→ Get personalized trading insights based on:
-  • Your current portfolio composition
-  • Market sentiment analysis
-  • Risk assessment
+• `/recommend` - Personalized insights based on:
+  - Your portfolio composition
+  - Market sentiment
+  - Risk assessment
 
-⚠️ **Disclaimer**: AI recommendations are for informational purposes ONLY and do NOT constitute financial advice. Always conduct your own research (DYOR).
-
-━━━━━━━━━━━━━━━━━━
-🔒 **5. YOUR DATA & PRIVACY (GDPR)**
-
-**Export your data:**
-`/mydata`
-→ Download all your data as JSON
-→ Includes: portfolio, alerts, transactions
-
-**Delete your account:**
-`/deletedata`
-→ Permanently delete ALL your data
-→ Cannot be undone!
-
-**Auto-deletion:**
-→ Inactive accounts are automatically deleted after 180 days
-
-**Your rights:**
-• Right to access (GDPR Art. 15)
-• Right to erasure (GDPR Art. 17)
-• Right to data portability (GDPR Art. 20)
-
-Read more: [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)
+⚠️ For informational purposes only. NOT financial advice.
 
 ━━━━━━━━━━━━━━━━━━
-🚀 **AVAILABLE CRYPTOS**
+🔒 **YOUR DATA (GDPR)**
 
-Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), Cardano (ADA), Avalanche (AVAX), Polkadot (DOT), Polygon (MATIC), Chainlink (LINK), Uniswap (UNI), Cosmos (ATOM), Litecoin (LTC), Bitcoin Cash (BCH), Stellar (XLM)
+• `/mydata` - Download all data (JSON)
+• `/deletedata` - Permanently delete account
+
+**Auto-deletion:** Inactive accounts deleted after 180 days
+
+**Your rights (GDPR):**
+• Right to access (Art. 15)
+• Right to erasure (Art. 17)
+• Right to portability (Art. 20)
+
+[Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
 
 ━━━━━━━━━━━━━━━━━━
-🛠️ **TECH INFO**
+🚀 **CRYPTOS**
 
-• **Storage:** Redis (ultra-fast)
-• **Prices:** CoinGecko API (real-time)
-• **AI:** Perplexity API (sentiment analysis)
-• **Automation:** Celery (alerts + insights)
-• **Hosting:** Railway (24/7)
+BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 ━━━━━━━━━━━━━━━━━━
-⚠️ **LEGAL DISCLAIMER**
+⚠️ **DISCLAIMER**
 
 This bot provides informational services ONLY.
 • NOT financial advice
-• NOT investment recommendations
-• Trading crypto involves substantial risk of loss
+• Trading crypto = high risk of loss
 • You may lose your entire investment
-• Always consult a licensed financial advisor
+• Always DYOR (Do Your Own Research)
 
-[Terms of Service](https://github.com/theofanget07/sentiment-trading-bot/blob/main/TERMS_OF_SERVICE.md)
+[Terms of Service](https://theofanget07.github.io/sentiment-trading-bot/terms)
 
-_Back to menu: `/start`_
+_Back: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
 
@@ -410,7 +258,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response += f"  • P&L: `{pnl_display}`"
             
             response += f"\n\n**Total Value:** `{format_price(portfolio['total_current_value'])}`"
-            response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
+            response += "\n\n_Prices by CoinGecko_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /portfolio response sent to {user_id}")
@@ -646,7 +494,6 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response += f"\n{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)\n"
         
         response += f"\n_Use `/portfolio` for detailed breakdown_"
-        response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /summary sent to {user_id}")
@@ -743,7 +590,7 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Price must be positive.", parse_mode='Markdown')
         return
     
-    # ✅ AMÉLIORATION: Vérifier le support du symbole AVANT d'appeler l'API
+    # Check if symbol supported
     if not is_symbol_supported(symbol):
         await update.message.reply_text(
             f"❌ **{symbol} not supported**\n\n"
@@ -752,10 +599,9 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    # Fetch current price (with retry logic from crypto_prices.py)
+    # Fetch current price
     current_price = get_crypto_price(symbol)
     
-    # ✅ AMÉLIORATION: Message distinct si API échoue malgré les retries
     if current_price is None:
         await update.message.reply_text(
             f"⚠️ **Price API Temporarily Unavailable**\n\n"
@@ -909,7 +755,6 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
             response += f"\n\n_Alerts checked every 15 minutes_\n"
             response += f"_Remove with `/removealert <SYMBOL>`_"
-            response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /listalerts sent to {user_id}")
@@ -1010,7 +855,6 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         realized_pnl = redis_storage.get_realized_pnl(user_id)
         
         # Build JSON export
-        import json
         data_export = {
             "profile": profile,
             "positions": positions,
@@ -1028,7 +872,6 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         json_output = json.dumps(data_export, indent=2, ensure_ascii=False)
         
         # Send as file
-        from io import BytesIO
         json_file = BytesIO(json_output.encode('utf-8'))
         json_file.name = f"cryptosentinel_data_{user_id}.json"
         
@@ -1044,7 +887,7 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• Transaction history\n"
                 "• Realized P&L records\n\n"
                 "_This is your RIGHT TO ACCESS under GDPR Article 15._\n\n"
-                "📄 [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)"
+                "📄 [Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)"
             ),
             parse_mode='Markdown'
         )
