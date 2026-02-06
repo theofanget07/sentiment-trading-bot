@@ -66,12 +66,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     welcome_text = f"""👋 **Welcome {user.first_name}!**
 
-🤖 **Sentiment Trading Bot**
+🤖 **CryptoSentinel AI**
 Your AI crypto copilot for:
 • Sentiment analysis
 • Portfolio management
 • Price alerts
 • P&L tracking
+
+⚠️ **IMPORTANT DISCLAIMER**
+
+CryptoSentinel AI provides INFORMATIONAL ALERTS and AI-powered analysis ONLY.
+
+🚫 This is NOT financial, investment, or trading advice.
+🚫 We do NOT manage your funds or execute trades.
+✅ You are solely responsible for your trading decisions.
+
+⚠️ **RISKS:**
+• Cryptocurrency markets are highly volatile
+• You may lose your ENTIRE investment
+• Past performance does NOT guarantee future results
+• AI recommendations are probabilistic, NOT guaranteed
+
+**NEVER invest more than you can afford to lose.**
 
 ━━━━━━━━━━━━━━━━━━
 🎯 **SENTIMENT ANALYSIS**
@@ -121,16 +137,37 @@ Your AI crypto copilot for:
   _Example: `/removealert BTC`_
 
 ━━━━━━━━━━━━━━━━━━
+🤖 **AI RECOMMENDATIONS**
+
+• `/recommend` – Get personalized AI trading insights
+  Based on your portfolio and market sentiment.
+
+━━━━━━━━━━━━━━━━━━
+🔒 **YOUR DATA & PRIVACY**
+
+• `/mydata` – Export all your data (GDPR)
+• `/deletedata` – Permanently delete your account
+
+We respect your privacy. Read our:
+📄 [Terms of Service](https://github.com/theofanget07/sentiment-trading-bot/blob/main/TERMS_OF_SERVICE.md)
+🔐 [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)
+
+━━━━━━━━━━━━━━━━━━
 📈 **SUPPORTED CRYPTOS**
 
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 ━━━━━━━━━━━━━━━━━━
-ℹ️ **Quick Start**
+ℹ️ **Data Sources**
 
-Try this:
-`/add BTC 1 45000`
-Then: `/summary`
+• Crypto prices: [CoinGecko API](https://www.coingecko.com/en/api)
+• AI analysis: [Perplexity AI](https://www.perplexity.ai)
+
+_Prices may be delayed or inaccurate. We do NOT guarantee accuracy._
+
+━━━━━━━━━━━━━━━━━━
+
+**By using this bot, you agree to our Terms of Service and Privacy Policy.**
 
 _Type `/help` for detailed guide_
 """
@@ -235,6 +272,40 @@ The bot uses Perplexity AI to analyze crypto sentiment (BULLISH/BEARISH/NEUTRAL)
 • Alert triggers once, then auto-deletes
 
 ━━━━━━━━━━━━━━━━━━
+🤖 **4. AI RECOMMENDATIONS**
+
+`/recommend`
+→ Get personalized trading insights based on:
+  • Your current portfolio composition
+  • Market sentiment analysis
+  • Risk assessment
+
+⚠️ **Disclaimer**: AI recommendations are for informational purposes ONLY and do NOT constitute financial advice. Always conduct your own research (DYOR).
+
+━━━━━━━━━━━━━━━━━━
+🔒 **5. YOUR DATA & PRIVACY (GDPR)**
+
+**Export your data:**
+`/mydata`
+→ Download all your data as JSON
+→ Includes: portfolio, alerts, transactions
+
+**Delete your account:**
+`/deletedata`
+→ Permanently delete ALL your data
+→ Cannot be undone!
+
+**Auto-deletion:**
+→ Inactive accounts are automatically deleted after 180 days
+
+**Your rights:**
+• Right to access (GDPR Art. 15)
+• Right to erasure (GDPR Art. 17)
+• Right to data portability (GDPR Art. 20)
+
+Read more: [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)
+
+━━━━━━━━━━━━━━━━━━
 🚀 **AVAILABLE CRYPTOS**
 
 Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), Cardano (ADA), Avalanche (AVAX), Polkadot (DOT), Polygon (MATIC), Chainlink (LINK), Uniswap (UNI), Cosmos (ATOM), Litecoin (LTC), Bitcoin Cash (BCH), Stellar (XLM)
@@ -248,9 +319,21 @@ Bitcoin (BTC), Ethereum (ETH), Solana (SOL), Binance Coin (BNB), Ripple (XRP), C
 • **Automation:** Celery (alerts + insights)
 • **Hosting:** Railway (24/7)
 
+━━━━━━━━━━━━━━━━━━
+⚠️ **LEGAL DISCLAIMER**
+
+This bot provides informational services ONLY.
+• NOT financial advice
+• NOT investment recommendations
+• Trading crypto involves substantial risk of loss
+• You may lose your entire investment
+• Always consult a licensed financial advisor
+
+[Terms of Service](https://github.com/theofanget07/sentiment-trading-bot/blob/main/TERMS_OF_SERVICE.md)
+
 _Back to menu: `/start`_
 """
-    await update.message.reply_text(help_text, parse_mode='Markdown')
+    await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
 
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = ' '.join(context.args)
@@ -327,8 +410,9 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 response += f"  • P&L: `{pnl_display}`"
             
             response += f"\n\n**Total Value:** `{format_price(portfolio['total_current_value'])}`"
+            response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
         
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /portfolio response sent to {user_id}")
         
     except Exception as e:
@@ -562,8 +646,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response += f"\n{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)\n"
         
         response += f"\n_Use `/portfolio` for detailed breakdown_"
+        response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
         
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /summary sent to {user_id}")
         
     except Exception as e:
@@ -824,8 +909,9 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             
             response += f"\n\n_Alerts checked every 15 minutes_\n"
             response += f"_Remove with `/removealert <SYMBOL>`_"
+            response += "\n\n_Prices powered by [CoinGecko API](https://www.coingecko.com/en/api)_"
         
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /listalerts sent to {user_id}")
     
     except Exception as e:
@@ -904,6 +990,145 @@ async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         format_price
     )
 
+# ===== GDPR DATA COMMANDS =====
+
+async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Export user data (GDPR Right to Access - Art. 15)."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        return
+    
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name or "User"
+    
+    try:
+        # Collect all user data
+        profile = redis_storage.get_user_profile(user_id) or {"user_id": user_id, "username": username}
+        positions = redis_storage.get_all_positions(user_id)
+        alerts = redis_storage.get_alerts(user_id)
+        transactions = redis_storage.get_transactions(user_id, limit=100)
+        realized_pnl = redis_storage.get_realized_pnl(user_id)
+        
+        # Build JSON export
+        import json
+        data_export = {
+            "profile": profile,
+            "positions": positions,
+            "alerts": alerts,
+            "transactions": transactions,
+            "realized_pnl": realized_pnl,
+            "export_date": datetime.utcnow().isoformat(),
+            "gdpr_info": {
+                "right": "GDPR Article 15 - Right to Access",
+                "controller": "Theo Fanget, Rue du Crêt 7, 1003 Lausanne, Switzerland"
+            }
+        }
+        
+        # Format as readable JSON
+        json_output = json.dumps(data_export, indent=2, ensure_ascii=False)
+        
+        # Send as file
+        from io import BytesIO
+        json_file = BytesIO(json_output.encode('utf-8'))
+        json_file.name = f"cryptosentinel_data_{user_id}.json"
+        
+        await update.message.reply_document(
+            document=json_file,
+            filename=f"cryptosentinel_data_{user_id}.json",
+            caption=(
+                "📦 **Your Data Export (GDPR)**\n\n"
+                "This file contains ALL your data stored in CryptoSentinel AI:\n"
+                "• Profile\n"
+                "• Portfolio positions\n"
+                "• Price alerts\n"
+                "• Transaction history\n"
+                "• Realized P&L records\n\n"
+                "_This is your RIGHT TO ACCESS under GDPR Article 15._\n\n"
+                "📄 [Privacy Policy](https://github.com/theofanget07/sentiment-trading-bot/blob/main/PRIVACY_POLICY.md)"
+            ),
+            parse_mode='Markdown'
+        )
+        logger.info(f"✅ /mydata export sent to user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ /mydata error: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        await update.message.reply_text("❌ Error exporting data.", parse_mode='Markdown')
+
+async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete all user data (GDPR Right to Erasure - Art. 17)."""
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        return
+    
+    user_id = update.effective_user.id
+    
+    # Confirmation message
+    confirmation_text = (
+        "⚠️ **DELETE ALL YOUR DATA?**\n\n"
+        "This will PERMANENTLY delete:\n"
+        "• Your profile\n"
+        "• All portfolio positions\n"
+        "• All price alerts\n"
+        "• Transaction history\n"
+        "• Realized P&L records\n\n"
+        "**⚠️ THIS CANNOT BE UNDONE!**\n\n"
+        "To confirm, send:\n"
+        "`/deletedata CONFIRM`\n\n"
+        "_This is your RIGHT TO ERASURE under GDPR Article 17._"
+    )
+    
+    # Check if user provided CONFIRM
+    if len(context.args) == 0:
+        await update.message.reply_text(confirmation_text, parse_mode='Markdown')
+        return
+    
+    if len(context.args) == 1 and context.args[0].upper() == "CONFIRM":
+        try:
+            # Delete all user data
+            # Get all positions to delete
+            positions = redis_storage.get_all_positions(user_id)
+            for symbol in positions.keys():
+                redis_storage.delete_position(user_id, symbol)
+            
+            # Get all alerts to delete
+            alerts = redis_storage.get_alerts(user_id)
+            for symbol in alerts.keys():
+                redis_storage.remove_alert(user_id, symbol)
+            
+            # Delete profile, transactions, realized_pnl
+            redis_storage.redis_client.delete(f"user:{user_id}:profile")
+            redis_storage.redis_client.delete(f"user:{user_id}:transactions")
+            redis_storage.redis_client.delete(f"user:{user_id}:realized_pnl")
+            
+            response = (
+                "✅ **DATA DELETED**\n\n"
+                "All your data has been permanently deleted from CryptoSentinel AI.\n\n"
+                "This includes:\n"
+                "• Profile\n"
+                "• Portfolio positions\n"
+                "• Price alerts\n"
+                "• Transaction history\n"
+                "• Realized P&L\n\n"
+                "You can start fresh anytime with `/start`.\n\n"
+                "Thank you for using CryptoSentinel AI. 👋"
+            )
+            
+            await update.message.reply_text(response, parse_mode='Markdown')
+            logger.info(f"✅ /deletedata executed for user {user_id} - ALL DATA DELETED")
+            
+        except Exception as e:
+            logger.error(f"❌ /deletedata error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            await update.message.reply_text("❌ Error deleting data. Please try again.", parse_mode='Markdown')
+    else:
+        await update.message.reply_text(
+            "⚠️ Invalid confirmation.\n\nUse: `/deletedata CONFIRM`",
+            parse_mode='Markdown'
+        )
+
 # ===== MESSAGE HANDLERS =====
 
 async def analyze_url(update: Update, url: str):
@@ -926,10 +1151,10 @@ async def analyze_url(update: Update, url: str):
 
 💡 {result['reasoning']}
 
-_Powered by Perplexity AI_
+_Powered by [Perplexity AI](https://www.perplexity.ai)_
 """
         await scraping_msg.delete()
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"Error in analyze_url: {e}")
         await scraping_msg.delete()
@@ -945,10 +1170,10 @@ async def analyze_text(update: Update, text: str):
 
 💡 {result['reasoning']}
 
-_Powered by Perplexity AI_
+_Powered by [Perplexity AI](https://www.perplexity.ai)_
 """
         await analyzing_msg.delete()
-        await update.message.reply_text(response, parse_mode='Markdown')
+        await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
     except Exception as e:
         logger.error(f"Error: {e}")
         await analyzing_msg.delete()
@@ -1025,6 +1250,10 @@ async def setup_application():
     
     # AI Recommendations (Feature 4)
     application.add_handler(CommandHandler("recommend", recommend_command))
+    
+    # GDPR Data Commands
+    application.add_handler(CommandHandler("mydata", mydata_command))
+    application.add_handler(CommandHandler("deletedata", deletedata_command))
     
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.add_error_handler(error_handler)
