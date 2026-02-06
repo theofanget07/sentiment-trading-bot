@@ -165,7 +165,13 @@ async def recommend_command(
             response += f"🔒 Confidence: **{rec['confidence']}%**\n"
             response += f"━━━━━━━━━━━━━━━━━━\n\n"
             response += f"📊 **AI Analysis:**\n\n{rec['reasoning']}\n"
-            response += f"\n_Powered by Perplexity AI_\n"
+            response += f"\n⚠️ **DISCLAIMER**\n"
+            response += f"This AI recommendation is for **informational purposes ONLY** and does **NOT** constitute financial advice.\n\n"
+            response += f"• Cryptocurrency trading involves **substantial risk of loss**\n"
+            response += f"• You may **lose your entire investment**\n"
+            response += f"• Always conduct your own research (DYOR)\n"
+            response += f"• Consult a licensed financial advisor\n\n"
+            response += f"_Powered by [Perplexity AI](https://www.perplexity.ai)_\n"
             response += f"_Use `/summary` for portfolio overview_"
             
             await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
