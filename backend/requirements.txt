@@ -5,6 +5,9 @@ uvicorn[standard]==0.25.0
 python-dotenv==1.0.0
 requests==2.31.0
 
+# Payment processing
+stripe==8.2.0
+
 # Web scraping & parsing
 beautifulsoup4==4.12.2
 
