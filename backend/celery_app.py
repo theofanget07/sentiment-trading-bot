@@ -7,11 +7,10 @@ This module configures Celery for background task processing:
 
 Features powered by Celery:
 1. Price alerts monitoring (every 15 minutes)
-2. AI recommendations (daily at 8am)
-3. Daily insights (daily at 8am per user timezone)
-4. Bonus Trade of the Day (daily at 8am)
+2. Morning Briefing (daily at 8am) - combines Daily Insights + Bonus Trade
+3. AI Recommendations (manual via /recommend command)
 
-Last updated: 2026-02-04 21:41 CET
+Last updated: 2026-02-06 10:07 CET
 """
 
 import os
@@ -34,9 +33,8 @@ app = Celery(
     backend=os.getenv("REDIS_URL", "redis://localhost:6379/0"),
     include=[
         "backend.tasks.alerts_checker",
-        "backend.tasks.ai_recommender",
-        "backend.tasks.daily_insights",
-        "backend.tasks.bonus_trade",  # BONUS TRADE OF THE DAY
+        "backend.tasks.ai_recommender",  # Manual /recommend command
+        "backend.tasks.morning_briefing",  # NEW: Combined daily digest
     ],
 )
 
@@ -76,23 +74,11 @@ app.conf.beat_schedule = {
         "options": {"expires": 600},  # Expire if not run within 10min
     },
     
-    # Feature 4: AI recommendations - daily at 8:00 AM CET
-    "generate-ai-recommendations": {
-        "task": "backend.tasks.ai_recommender.generate_daily_recommendations",
-        "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
-        "options": {"expires": 3600},  # Expire after 1h
-    },
-    
-    # Feature 5: Daily insights - daily at 8:00 AM CET
-    "send-daily-insights": {
-        "task": "backend.tasks.daily_insights.send_daily_portfolio_insights",
-        "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
-        "options": {"expires": 3600},  # Expire after 1h
-    },
-    
-    # BONUS: Trade of the Day - daily at 8:00 AM CET
-    "bonus-trade-of-day": {
-        "task": "backend.tasks.bonus_trade.send_bonus_trade_of_day",
+    # NEW: Morning Briefing - daily at 8:00 AM CET
+    # Combines: Daily Insights + Bonus Trade of the Day
+    # (AI Recommendations now manual via /recommend command)
+    "send-morning-briefing": {
+        "task": "backend.tasks.morning_briefing.send_morning_briefing",
         "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
         "options": {"expires": 3600},  # Expire after 1h
     },
@@ -101,21 +87,24 @@ app.conf.beat_schedule = {
 # Force print configuration info to stderr (always visible in Railway logs)
 config_banner = f"""
 {'='*70}
-🚀 CELERY CONFIGURATION LOADED - BONUS TRADE FEATURE ACTIVE
+🚀 CELERY CONFIGURATION LOADED - MORNING BRIEFING ACTIVE
 {'='*70}
 📦 Tasks included: {len(app.conf.include)} modules
    1. backend.tasks.alerts_checker
-   2. backend.tasks.ai_recommender
-   3. backend.tasks.daily_insights
-   4. backend.tasks.bonus_trade ⭐ NEW
+   2. backend.tasks.ai_recommender (manual via /recommend)
+   3. backend.tasks.morning_briefing ⭐ NEW
 
 ⏰ Beat schedules: {len(app.conf.beat_schedule)} tasks configured
-   1. check-price-alerts         → Every 15 minutes
-   2. generate-ai-recommendations → Daily 08:00 CET
-   3. send-daily-insights        → Daily 08:00 CET
-   4. bonus-trade-of-day         → Daily 08:00 CET ⭐ NEW
+   1. check-price-alerts     → Every 15 minutes
+   2. send-morning-briefing  → Daily 08:00 CET ⭐ NEW
 
-🎯 Next execution: Tomorrow 08:00 CET (all daily tasks)
+📋 Morning Briefing includes:
+   ✓ Portfolio metrics (value, 24h change, top performer)
+   ✓ AI position advice (personalized BUY/HOLD/SELL)
+   ✓ Bonus Trade of the Day (best opportunity)
+   ✓ Market news summary
+
+🎯 Next execution: Tomorrow 08:00 CET
 {'='*70}
 """
 
