@@ -10,6 +10,7 @@ from datetime import datetime
 from io import BytesIO
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
+from fastapi.responses import HTMLResponse
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
@@ -112,7 +113,7 @@ Your AI-powered crypto assistant
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 📊 Data: [CoinGecko](https://coingecko.com) + [Perplexity AI](https://perplexity.ai)
-📄 [Terms](https://theofanget07.github.io/sentiment-trading-bot/terms) | [Privacy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
+📄 [Terms](https://sentiment-trading-bot-production.up.railway.app/terms) | [Privacy](https://sentiment-trading-bot-production.up.railway.app/privacy)
 
 _Type `/help` for detailed guide_
 """
@@ -207,7 +208,7 @@ Full GDPR compliance with complete data control.
 • Right to portability (Art. 20) - Export to JSON
 • Auto-deletion after 180 days of inactivity
 
-[Full Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)
+[Full Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)
 
 ━━━━━━━━━━━━━━━━━━
 🚀 **SUPPORTED CRYPTOS**
@@ -223,7 +224,7 @@ This bot provides informational services ONLY.
 • You may lose your ENTIRE investment
 • Always DYOR (Do Your Own Research)
 
-[Terms of Service](https://theofanget07.github.io/sentiment-trading-bot/terms)
+[Terms of Service](https://sentiment-trading-bot-production.up.railway.app/terms)
 
 ━━━━━━━━━━━━━━━━━━
 _Back to main menu: `/start`_
@@ -943,7 +944,7 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "• Transaction history\n"
                 "• Realized P&L records\n\n"
                 "_This is your RIGHT TO ACCESS under GDPR Article 15._\n\n"
-                "📄 [Privacy Policy](https://theofanget07.github.io/sentiment-trading-bot/privacy)"
+                "📄 [Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)"
             ),
             parse_mode='Markdown'
         )
@@ -1092,6 +1093,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Bot error: {context.error}")
 
+# ===== FASTAPI ROUTES =====
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "Sentiment Trading Bot Running", "db": DB_AVAILABLE}
@@ -1108,6 +1111,29 @@ async def health():
             "alerts": "online" if DB_AVAILABLE else "offline"
         }
     }
+
+# LEGAL PAGES ROUTES (Privacy fix - no GitHub username exposed)
+@app.get("/terms", response_class=HTMLResponse)
+async def terms_page():
+    """Serve Terms of Service page."""
+    try:
+        templates_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        terms_path = os.path.join(templates_dir, 'terms.html')
+        with open(terms_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Terms of Service</h1><p>File not found</p>"
+
+@app.get("/privacy", response_class=HTMLResponse)
+async def privacy_page():
+    """Serve Privacy Policy page."""
+    try:
+        templates_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        privacy_path = os.path.join(templates_dir, 'privacy.html')
+        with open(privacy_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Privacy Policy</h1><p>File not found</p>"
 
 @app.post("/webhook")
 async def webhook(request: Request):
