@@ -864,7 +864,8 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "export_date": datetime.utcnow().isoformat(),
             "gdpr_info": {
                 "right": "GDPR Article 15 - Right to Access",
-                "controller": "Theo Fanget, Rue du Crêt 7, 1003 Lausanne, Switzerland"
+                "controller": "CryptoSentinel AI, Switzerland",
+                "contact": "cryptosentinel.contact@gmail.com"
             }
         }
         
