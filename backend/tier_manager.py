@@ -9,11 +9,11 @@ Handles:
 - Subscription status management
 
 Limitations:
-- Free: 5 analyses/day, 3 positions max, NO premium features
-- Premium (9€/month): Unlimited analyses, unlimited positions, ALL features
+- Free: 5 analyses/day, 3 positions max, 1 crypto with alerts, 3 AI reco/day
+- Premium (9€/month): Unlimited analyses, unlimited positions, unlimited alerts, unlimited AI reco
 
 Author: Theo Fanget
-Date: 08 February 2026
+Date: 08 February 2026 (Updated)
 """
 import logging
 from typing import Tuple, Optional
@@ -160,55 +160,107 @@ class TierManager:
         
         return True, ""
     
-    def can_set_alert(self, user_id: int) -> Tuple[bool, str]:
-        """Check if user can set price alerts (premium only).
+    def can_set_alert(self, user_id: int, current_alert_count: int) -> Tuple[bool, str]:
+        """Check if user can set price alerts (1 crypto max for free, unlimited for premium).
         
         Args:
             user_id: Telegram user ID
+            current_alert_count: Number of cryptos with active alerts
         
         Returns:
             Tuple of (can_proceed: bool, message: str)
+        
+        Examples:
+            >>> alerts = get_alerts(user_id)
+            >>> can, msg = tier_manager.can_set_alert(user_id, len(alerts))
+            >>> if can:
+            >>>     # Set alert
+            >>> else:
+            >>>     # Show upgrade message
         """
+        # Premium users have unlimited alerts
         if self.is_premium(user_id):
             return True, ""
         
-        return False, (
-            "🔒 **Feature Premium**\n\n"
-            "Les alertes prix sont réservées aux membres Premium.\n\n"
-            "✨ **Passe Premium (9€/mois)** pour débloquer:\n"
-            "• Alertes prix TP/SL illimitées\n"
-            "• Morning Briefing quotidien\n"
-            "• AI Recommendations\n"
-            "• Trade of the Day\n"
-            "• Analyses illimitées\n"
-            "• Positions illimitées\n\n"
-            "👉 /subscribe pour souscrire"
-        )
+        # Free users: max 1 crypto with alerts (for testing)
+        if current_alert_count >= 1:
+            return False, (
+                "🆓 **Limite Free atteinte** (1 crypto avec alertes max)\n\n"
+                f"🔔 Tu as déjà des alertes configurées sur {current_alert_count} crypto.\n\n"
+                "🎁 **Version Free** : Teste les alertes sur 1 crypto\n"
+                "✨ **Passe Premium (9€/mois)** pour débloquer :\n"
+                "• Alertes TP/SL illimitées sur toutes tes cryptos\n"
+                "• Morning Briefing quotidien (8h00)\n"
+                "• AI Recommendations illimitées\n"
+                "• Trade of the Day exclusif\n"
+                "• Analyses illimitées\n"
+                "• Positions illimitées\n\n"
+                "👉 /subscribe pour souscrire"
+            )
+        
+        # User can set first alert
+        return True, "🎁 Alerte gratuite (1/1 en Free) - Passe Premium pour alertes illimitées !"
     
     def can_access_ai_recommendations(self, user_id: int) -> Tuple[bool, str]:
-        """Check if user can access AI recommendations (premium only).
+        """Check if user can access AI recommendations (3/day for free, unlimited for premium).
         
         Args:
             user_id: Telegram user ID
         
         Returns:
             Tuple of (can_proceed: bool, message: str)
+        
+        Examples:
+            >>> can, msg = tier_manager.can_access_ai_recommendations(user_id)
+            >>> if can:
+            >>>     # Show recommendations
+            >>> else:
+            >>>     # Show upgrade message
         """
+        # Premium users have unlimited access
         if self.is_premium(user_id):
             return True, ""
         
-        return False, (
-            "🔒 **Feature Premium**\n\n"
-            "Les recommandations AI sont réservées aux membres Premium.\n\n"
-            "✨ **Passe Premium (9€/mois)** pour débloquer:\n"
-            "• AI Recommendations personnalisées\n"
-            "• Morning Briefing quotidien\n"
-            "• Trade of the Day\n"
-            "• Alertes prix TP/SL\n"
-            "• Analyses illimitées\n"
-            "• Positions illimitées\n\n"
-            "👉 /subscribe pour souscrire"
-        )
+        # Free users: check daily limit (3 recommendations/day)
+        today = datetime.utcnow().strftime("%Y-%m-%d")
+        key = f"user:{user_id}:recommend_count:{today}"
+        
+        try:
+            count_bytes = self.redis.get(key)
+            current = int(count_bytes.decode('utf-8')) if count_bytes else 0
+            
+            # Check if limit reached
+            if current >= 3:
+                return False, (
+                    "🆓 **Limite Free atteinte** (3 recommandations/jour)\n\n"
+                    "🤖 Tu as utilisé tes 3 recommandations AI aujourd'hui.\n\n"
+                    "🎁 **Version Free** : 3 recommandations/jour pour tester\n"
+                    "✨ **Passe Premium (9€/mois)** pour :\n"
+                    "• AI Recommendations illimitées\n"
+                    "• Morning Briefing quotidien avec analyse\n"
+                    "• Trade of the Day exclusif\n"
+                    "• Alertes prix TP/SL illimitées\n"
+                    "• Analyses illimitées\n"
+                    "• Positions illimitées\n\n"
+                    "👉 /subscribe pour souscrire"
+                )
+            
+            # Increment counter
+            self.redis.incr(key)
+            
+            # Set expiration at end of day (midnight UTC)
+            end_of_day = datetime.utcnow().replace(
+                hour=23, minute=59, second=59, microsecond=999999
+            )
+            self.redis.expireat(key, int(end_of_day.timestamp()))
+            
+            # Return success with counter info
+            return True, f"🤖 Recommandation {current + 1}/3 utilisée aujourd'hui (Free)"
+        
+        except Exception as e:
+            logger.error(f"Error checking AI recommendation limit: {e}")
+            # Fail open - allow the recommendation
+            return True, ""
     
     def can_access_morning_briefing(self, user_id: int) -> bool:
         """Check if user can receive morning briefing (premium only).
@@ -234,10 +286,14 @@ class TierManager:
         """
         today = datetime.utcnow().strftime("%Y-%m-%d")
         analyze_key = f"user:{user_id}:analyze_count:{today}"
+        recommend_key = f"user:{user_id}:recommend_count:{today}"
         
         try:
             analyze_count_bytes = self.redis.get(analyze_key)
             analyze_count = int(analyze_count_bytes.decode('utf-8')) if analyze_count_bytes else 0
+            
+            recommend_count_bytes = self.redis.get(recommend_key)
+            recommend_count = int(recommend_count_bytes.decode('utf-8')) if recommend_count_bytes else 0
             
             tier = self.get_user_tier(user_id)
             
@@ -245,7 +301,10 @@ class TierManager:
                 'tier': tier,
                 'analyze_count_today': analyze_count,
                 'analyze_limit': None if tier == 'premium' else 5,
+                'recommend_count_today': recommend_count,
+                'recommend_limit': None if tier == 'premium' else 3,
                 'position_limit': None if tier == 'premium' else 3,
+                'alert_limit': None if tier == 'premium' else 1,
                 'is_premium': tier == 'premium'
             }
         
@@ -255,7 +314,10 @@ class TierManager:
                 'tier': 'free',
                 'analyze_count_today': 0,
                 'analyze_limit': 5,
+                'recommend_count_today': 0,
+                'recommend_limit': 3,
                 'position_limit': 3,
+                'alert_limit': 1,
                 'is_premium': False
             }
     
@@ -274,7 +336,7 @@ class TierManager:
             "✅ Positions portfolio illimitées\n"
             "✅ Morning Briefing quotidien (8h00 CET)\n"
             "✅ Alertes prix TP/SL illimitées\n"
-            "✅ AI Recommendations personnalisées\n"
+            "✅ AI Recommendations illimitées\n"
             "✅ Trade of the Day exclusif\n"
             "✅ Historique illimité\n\n"
             "**Tarif :**\n"
@@ -319,19 +381,22 @@ if __name__ == "__main__":
         can, msg = tier_manager.can_add_position(test_user_id, positions)
         print(f"   Current: {positions} -> {'✅ Can add' if can else '❌ Limit reached'}")
     
-    # Test premium features
-    print(f"\n4. Testing premium features...")
-    can_alert, alert_msg = tier_manager.can_set_alert(test_user_id)
-    print(f"   Can set alert: {'✅' if can_alert else '❌'}")
+    # Test alert limit (1 crypto for free)
+    print(f"\n4. Testing alert limit (1 crypto for free)...")
+    for alert_count in [0, 1, 2]:
+        can, msg = tier_manager.can_set_alert(test_user_id, alert_count)
+        print(f"   Current alerts: {alert_count} -> {'✅ Can set' if can else '❌ Limit reached'}")
     
-    can_ai, ai_msg = tier_manager.can_access_ai_recommendations(test_user_id)
-    print(f"   Can access AI reco: {'✅' if can_ai else '❌'}")
-    
-    can_briefing = tier_manager.can_access_morning_briefing(test_user_id)
-    print(f"   Can access briefing: {'✅' if can_briefing else '❌'}")
+    # Test AI recommendations (3/day for free)
+    print(f"\n5. Testing AI recommendations (3/day for free)...")
+    for i in range(5):
+        can, msg = tier_manager.can_access_ai_recommendations(test_user_id)
+        print(f"   Attempt {i+1}: {'✅ Allowed' if can else '❌ Blocked'}")
+        if msg:
+            print(f"   Message: {msg[:50]}...")
     
     # Test usage stats
-    print(f"\n5. Usage stats:")
+    print(f"\n6. Usage stats:")
     stats = tier_manager.get_usage_stats(test_user_id)
     for key, value in stats.items():
         print(f"   {key}: {value}")
