@@ -10,7 +10,7 @@ Features powered by Celery:
 2. Morning Briefing (daily at 8am) - combines Daily Insights + Bonus Trade
 3. AI Recommendations (manual via /recommend command)
 
-Last updated: 2026-02-08 18:05 CET
+Last updated: 2026-02-08 19:50 CET
 """
 
 import os
@@ -18,8 +18,7 @@ import sys
 import logging
 from celery import Celery
 from celery.schedules import crontab
-from datetime import datetime
-import pytz
+from datetime import datetime, timedelta, timezone
 
 # Configure logging
 logging.basicConfig(
@@ -92,16 +91,16 @@ app.conf.beat_schedule = {
     },
 }
 
-# Calculate next morning briefing time
+# Calculate next morning briefing time (using UTC+1 for CET)
 try:
-    tz = pytz.timezone('Europe/Zurich')
-    now_cet = datetime.now(tz)
+    # CET = UTC+1 (Europe/Zurich)
+    cet_offset = timezone(timedelta(hours=1))
+    now_cet = datetime.now(cet_offset)
     
     # Next 8:00 AM CET
     next_run = now_cet.replace(hour=8, minute=0, second=0, microsecond=0)
     if now_cet.hour >= 8:
         # Already past 8 AM today, schedule for tomorrow
-        from datetime import timedelta
         next_run = next_run + timedelta(days=1)
     
     next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S %Z")
