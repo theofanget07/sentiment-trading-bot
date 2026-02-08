@@ -15,7 +15,7 @@ Replaces:
 
 Runs daily at 8:00 AM CET via Celery Beat.
 
-Last updated: 2026-02-06 10:01 CET
+Last updated: 2026-02-08 18:10 CET
 """
 
 import logging
@@ -25,6 +25,7 @@ from backend.redis_storage import RedisStorage
 from backend.crypto_prices import get_crypto_price, get_multiple_prices, SYMBOL_TO_ID, format_price
 from backend.services.perplexity_client import get_perplexity_client
 from backend.services.notification_service import get_notification_service
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,10 @@ def send_morning_briefing() -> Dict:
     Returns:
         Dict with task execution summary
     """
+    logger.info("="*70)
     logger.info("[MORNING BRIEFING] 🌅 Starting Morning Briefing task...")
+    logger.info(f"[MORNING BRIEFING] Task started at: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+    logger.info("="*70)
     
     storage = RedisStorage()
     perplexity = get_perplexity_client()
@@ -52,16 +56,20 @@ def send_morning_briefing() -> Dict:
     skipped_errors = 0
     
     # Step 1: Find Bonus Trade of the Day (same for ALL users)
-    logger.info("[MORNING BRIEFING] 📊 Analyzing Bonus Trade of the Day...")
+    logger.info("[MORNING BRIEFING] 📊 Step 1/3: Analyzing Bonus Trade of the Day...")
     bonus_trade = find_bonus_trade_of_day(perplexity)
     
     if not bonus_trade:
-        logger.error("[MORNING BRIEFING] ❌ Failed to find Bonus Trade, aborting")
-        return {
-            "status": "failed",
-            "error": "No bonus trade identified",
-            "users_processed": 0,
-            "briefings_sent": 0,
+        logger.warning("[MORNING BRIEFING] ⚠️ No Bonus Trade found, using fallback")
+        # Use fallback instead of aborting
+        bonus_trade = {
+            "symbol": "BTC",
+            "action": "HOLD",
+            "entry_price": 0,
+            "reasoning": "Markets are consolidating. Wait for clearer signals before entering new positions.",
+            "confidence": 50,
+            "risk_level": "MEDIUM",
+            "score": 50,
         }
     
     logger.info(
@@ -70,9 +78,10 @@ def send_morning_briefing() -> Dict:
     )
     
     # Step 2: Send personalized briefing to each user
+    logger.info("[MORNING BRIEFING] 👥 Step 2/3: Processing users...")
     try:
         user_ids = storage.get_all_user_ids()
-        logger.info(f"[MORNING BRIEFING] 👥 Found {len(user_ids)} users to process")
+        logger.info(f"[MORNING BRIEFING] Found {len(user_ids)} users to process")
         
         if not user_ids:
             logger.warning("[MORNING BRIEFING] No users found in database")
@@ -88,7 +97,7 @@ def send_morning_briefing() -> Dict:
                 users_processed += 1
                 chat_id = int(user_id.replace("user:", ""))
                 
-                logger.debug(f"[MORNING BRIEFING] Processing user {chat_id}...")
+                logger.info(f"[MORNING BRIEFING] ➡️ Processing user {chat_id} ({users_processed}/{len(user_ids)})...")
                 
                 # Get user's portfolio
                 portfolio = storage.get_portfolio(chat_id)
@@ -97,47 +106,55 @@ def send_morning_briefing() -> Dict:
                     skipped_no_portfolio += 1
                     continue
                 
-                logger.debug(f"[MORNING BRIEFING] User {chat_id} has {len(portfolio)} positions")
+                logger.info(f"[MORNING BRIEFING] User {chat_id} has {len(portfolio)} positions: {list(portfolio.keys())}")
                 
                 # Get username
                 username = storage.get_user_data(chat_id, "username") or "User"
                 
                 # Calculate portfolio metrics
-                logger.debug(f"[MORNING BRIEFING] Calculating metrics for user {chat_id}...")
+                logger.info(f"[MORNING BRIEFING] Calculating metrics for user {chat_id}...")
                 metrics = calculate_portfolio_metrics(portfolio)
                 
                 if not metrics:
                     logger.warning(
-                        f"[MORNING BRIEFING] Could not calculate metrics for user {chat_id}"
+                        f"[MORNING BRIEFING] ⚠️ Could not calculate metrics for user {chat_id} (API issues), "
+                        "will send briefing with limited data"
                     )
-                    skipped_errors += 1
-                    continue
-                
-                logger.debug(
-                    f"[MORNING BRIEFING] User {chat_id} metrics: "
-                    f"Value=${metrics['total_value']:.2f}, Change={metrics['change_24h_pct']:+.2f}%"
-                )
+                    # Send briefing anyway with degraded mode
+                    metrics = {
+                        "total_value": 0,
+                        "change_24h": 0,
+                        "change_24h_pct": 0,
+                        "best_performer": "N/A",
+                        "best_performer_pct": 0,
+                    }
+                else:
+                    logger.info(
+                        f"[MORNING BRIEFING] ✅ User {chat_id} metrics: "
+                        f"Value=${metrics['total_value']:.2f}, Change={metrics['change_24h_pct']:+.2f}%"
+                    )
                 
                 # Get market news summary
-                logger.debug(f"[MORNING BRIEFING] Fetching news for user {chat_id}...")
+                logger.info(f"[MORNING BRIEFING] Fetching news for user {chat_id}...")
                 symbols = list(portfolio.keys())
                 try:
                     news_summary = perplexity.get_crypto_news_summary(symbols)
+                    logger.info(f"[MORNING BRIEFING] ✅ News fetched ({len(news_summary)} chars)")
                 except Exception as e:
                     logger.error(f"[MORNING BRIEFING] News fetch failed for user {chat_id}: {e}")
-                    news_summary = "Market news unavailable at this time."
+                    news_summary = "Market news unavailable at this time. Check CoinGecko or CoinMarketCap for latest updates."
                 
                 # Generate AI advice for each position
-                logger.debug(f"[MORNING BRIEFING] Generating AI advice for user {chat_id}...")
+                logger.info(f"[MORNING BRIEFING] Generating AI advice for user {chat_id}...")
                 try:
                     position_advice = generate_position_advice(portfolio, perplexity)
-                    logger.debug(f"[MORNING BRIEFING] Generated {len(position_advice)} advice items")
+                    logger.info(f"[MORNING BRIEFING] ✅ Generated {len(position_advice)} advice items")
                 except Exception as e:
                     logger.error(f"[MORNING BRIEFING] Advice generation failed for user {chat_id}: {e}")
                     position_advice = []
                 
                 # Send comprehensive morning briefing
-                logger.debug(f"[MORNING BRIEFING] Sending briefing to user {chat_id}...")
+                logger.info(f"[MORNING BRIEFING] 📨 Sending briefing to user {chat_id}...")
                 success = notification_service.send_morning_briefing(
                     chat_id=chat_id,
                     username=username,
@@ -160,7 +177,7 @@ def send_morning_briefing() -> Dict:
             
             except Exception as e:
                 logger.error(
-                    f"[MORNING BRIEFING] Error processing user {user_id}: {e}",
+                    f"[MORNING BRIEFING] ❌ Error processing user {user_id}: {e}",
                     exc_info=True
                 )
                 errors += 1
@@ -179,16 +196,20 @@ def send_morning_briefing() -> Dict:
             },
         }
         
+        logger.info("="*70)
         logger.info(
             f"[MORNING BRIEFING] ✅ Task completed: "
             f"{briefings_sent}/{users_processed} sent, "
             f"{skipped_no_portfolio} no portfolio, "
             f"{errors} errors"
         )
+        logger.info("="*70)
         return result
     
     except Exception as e:
-        logger.error(f"[MORNING BRIEFING] Task failed: {e}", exc_info=True)
+        logger.error("="*70)
+        logger.error(f"[MORNING BRIEFING] ❌ Task failed: {e}", exc_info=True)
+        logger.error("="*70)
         return {
             "status": "failed",
             "error": str(e),
@@ -210,21 +231,30 @@ def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
         or None if no opportunity found
     """
     try:
-        logger.info(f"[BONUS TRADE] Fetching prices for {len(SUPPORTED_CRYPTOS)} cryptos...")
-        prices = get_multiple_prices(SUPPORTED_CRYPTOS, force_refresh=True)
+        logger.info(f"[BONUS TRADE] 🔍 Fetching prices for {len(SUPPORTED_CRYPTOS)} cryptos...")
+        prices = get_multiple_prices(SUPPORTED_CRYPTOS, force_refresh=False)  # Use cache!
         
-        valid_cryptos = [symbol for symbol, price in prices.items() if price is not None]
-        logger.info(f"[BONUS TRADE] Got prices for {len(valid_cryptos)}/{len(SUPPORTED_CRYPTOS)} cryptos")
+        valid_cryptos = [symbol for symbol, price in prices.items() if price is not None and price > 0]
+        logger.info(f"[BONUS TRADE] ✅ Got prices for {len(valid_cryptos)}/{len(SUPPORTED_CRYPTOS)} cryptos")
         
-        if len(valid_cryptos) < 5:
-            logger.error("[BONUS TRADE] Too few prices available")
+        if len(valid_cryptos) < 3:
+            logger.error(f"[BONUS TRADE] ❌ Too few prices available ({len(valid_cryptos)}), aborting")
             return None
         
+        # Limit to top 5 by market cap for faster analysis
+        top_cryptos = ["BTC", "ETH", "SOL", "BNB", "XRP"]
+        analysis_cryptos = [c for c in top_cryptos if c in valid_cryptos]
+        
+        if not analysis_cryptos:
+            analysis_cryptos = valid_cryptos[:5]  # Fallback to first 5 available
+        
+        logger.info(f"[BONUS TRADE] 🔍 Analyzing {len(analysis_cryptos)} cryptos: {analysis_cryptos}")
+        
         # Analyze opportunities
-        logger.info("[BONUS TRADE] Analyzing trading opportunities with Perplexity AI...")
+        logger.info("[BONUS TRADE] 🤖 Analyzing trading opportunities with Perplexity AI...")
         opportunities = []
         
-        for symbol in valid_cryptos:
+        for symbol in analysis_cryptos:
             try:
                 analysis = analyze_trade_opportunity(
                     symbol=symbol,
@@ -235,28 +265,30 @@ def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
                 if analysis:
                     opportunities.append(analysis)
                     logger.info(
-                        f"[BONUS TRADE] {symbol}: Score={analysis['score']}, "
-                        f"Confidence={analysis['confidence']}%"
+                        f"[BONUS TRADE] {symbol}: Score={analysis['score']:.0f}, "
+                        f"Confidence={analysis['confidence']}%, Action={analysis['action']}"
                     )
+                else:
+                    logger.info(f"[BONUS TRADE] {symbol}: No strong signal")
             
             except Exception as e:
-                logger.error(f"[BONUS TRADE] Error analyzing {symbol}: {e}")
+                logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
                 continue
         
         if not opportunities:
-            logger.error("[BONUS TRADE] No opportunities identified")
+            logger.error("[BONUS TRADE] ❌ No opportunities identified")
             return None
         
         # Select BEST opportunity (highest score)
         best_trade = max(opportunities, key=lambda x: x['score'])
         logger.info(
-            f"[BONUS TRADE] 🏆 WINNER: {best_trade['symbol']} with score {best_trade['score']}"
+            f"[BONUS TRADE] 🏆 WINNER: {best_trade['symbol']} with score {best_trade['score']:.0f}"
         )
         
         return best_trade
     
     except Exception as e:
-        logger.error(f"[BONUS TRADE] Failed to find bonus trade: {e}", exc_info=True)
+        logger.error(f"[BONUS TRADE] ❌ Failed to find bonus trade: {e}", exc_info=True)
         return None
 
 
@@ -429,21 +461,26 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
         best_performer_pct = -999.0
         
         prices_fetched = 0
+        prices_failed = 0
+        
+        logger.info(f"[METRICS] Fetching prices for {len(portfolio)} positions...")
         
         for symbol, position in portfolio.items():
-            # Get current price
-            current_price = get_crypto_price(symbol)
-            if not current_price:
-                logger.warning(f"Could not fetch price for {symbol}, skipping position")
+            # Get current price with cache
+            current_price = get_crypto_price(symbol, force_refresh=False)
+            if not current_price or current_price <= 0:
+                logger.warning(f"[METRICS] ⚠️ Could not fetch price for {symbol}, skipping position")
+                prices_failed += 1
                 continue
             
             prices_fetched += 1
+            logger.debug(f"[METRICS] {symbol}: ${current_price:,.2f}")
             
             buy_price = position.get("buy_price", 0)
             qty = position.get("qty", 0)
             
             if buy_price <= 0 or qty <= 0:
-                logger.warning(f"Invalid position data for {symbol}: buy_price={buy_price}, qty={qty}")
+                logger.warning(f"[METRICS] Invalid position data for {symbol}: buy_price={buy_price}, qty={qty}")
                 continue
             
             # Calculate position value
@@ -459,16 +496,26 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
                 best_performer = symbol
                 best_performer_pct = pnl_pct
         
-        if total_value == 0 or prices_fetched == 0:
+        logger.info(
+            f"[METRICS] Prices: {prices_fetched} fetched, {prices_failed} failed out of {len(portfolio)} total"
+        )
+        
+        # Allow partial success (at least 50% of prices)
+        if prices_fetched == 0 or prices_fetched < len(portfolio) * 0.5:
             logger.warning(
-                f"Portfolio metrics incomplete: total_value={total_value}, "
-                f"prices_fetched={prices_fetched}/{len(portfolio)}"
+                f"[METRICS] ❌ Too few prices available ({prices_fetched}/{len(portfolio)}), "
+                "cannot calculate reliable metrics"
             )
             return None
         
         # Calculate 24h change (approximation using current P&L)
         change_24h = total_value - total_cost
         change_24h_pct = ((total_value - total_cost) / total_cost) * 100 if total_cost > 0 else 0
+        
+        logger.info(
+            f"[METRICS] ✅ Portfolio: ${total_value:,.2f}, Change: {change_24h_pct:+.2f}%, "
+            f"Best: {best_performer} ({best_performer_pct:+.2f}%)"
+        )
         
         return {
             "total_value": total_value,
@@ -479,7 +526,7 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
         }
     
     except Exception as e:
-        logger.error(f"Error calculating portfolio metrics: {e}", exc_info=True)
+        logger.error(f"[METRICS] ❌ Error calculating portfolio metrics: {e}", exc_info=True)
         return None
 
 
@@ -496,19 +543,21 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
     advice_list = []
     
     try:
+        logger.info(f"[ADVICE] Generating advice for {len(portfolio)} positions...")
+        
         for symbol, position in portfolio.items():
             try:
                 # Get current price
-                current_price = get_crypto_price(symbol)
-                if not current_price:
-                    logger.warning(f"Skipping advice for {symbol}: price unavailable")
+                current_price = get_crypto_price(symbol, force_refresh=False)
+                if not current_price or current_price <= 0:
+                    logger.warning(f"[ADVICE] Skipping advice for {symbol}: price unavailable")
                     continue
                 
                 buy_price = position.get("buy_price", 0)
                 qty = position.get("qty", 0)
                 
                 if buy_price <= 0 or qty <= 0:
-                    logger.warning(f"Skipping advice for {symbol}: invalid position data")
+                    logger.warning(f"[ADVICE] Skipping advice for {symbol}: invalid position data")
                     continue
                 
                 # Calculate P&L
@@ -527,16 +576,17 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
                     "advice": advice_text,
                 })
                 
-                logger.debug(f"Generated advice for {symbol}: {advice_text}")
+                logger.info(f"[ADVICE] ✅ {symbol}: {advice_text[:50]}...")
             
             except Exception as e:
-                logger.error(f"Error generating advice for {symbol}: {e}")
+                logger.error(f"[ADVICE] ❌ Error generating advice for {symbol}: {e}")
                 continue
         
+        logger.info(f"[ADVICE] ✅ Generated {len(advice_list)}/{len(portfolio)} advice items")
         return advice_list
     
     except Exception as e:
-        logger.error(f"Error generating position advice: {e}", exc_info=True)
+        logger.error(f"[ADVICE] ❌ Error generating position advice: {e}", exc_info=True)
         return []
 
 
@@ -601,7 +651,7 @@ Example: "HOLD: Strong support at $40k, target $50k."
         return advice
     
     except Exception as e:
-        logger.error(f"Error getting quick advice for {symbol}: {e}")
+        logger.error(f"[ADVICE] Error getting quick advice for {symbol}: {e}")
         
         # Fallback to rule-based advice
         if pnl_pct > 20:
