@@ -10,7 +10,7 @@ Features powered by Celery:
 2. Morning Briefing (daily at 8am) - combines Daily Insights + Bonus Trade
 3. AI Recommendations (manual via /recommend command)
 
-Last updated: 2026-02-06 10:07 CET
+Last updated: 2026-02-08 18:05 CET
 """
 
 import os
@@ -18,6 +18,8 @@ import sys
 import logging
 from celery import Celery
 from celery.schedules import crontab
+from datetime import datetime
+import pytz
 
 # Configure logging
 logging.basicConfig(
@@ -49,12 +51,12 @@ app.conf.update(
     
     # Task execution
     task_track_started=True,
-    task_time_limit=300,  # 5 minutes max per task
-    task_soft_time_limit=240,  # 4 minutes soft limit
+    task_time_limit=600,  # 10 minutes max per task (increased for morning briefing)
+    task_soft_time_limit=540,  # 9 minutes soft limit
     
     # Worker settings
     worker_prefetch_multiplier=1,  # One task at a time per worker
-    worker_max_tasks_per_child=100,  # Restart worker after 100 tasks
+    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (reduced)
     
     # Result backend
     result_expires=3600,  # Results expire after 1 hour
@@ -63,6 +65,9 @@ app.conf.update(
     # Retry settings
     task_acks_late=True,  # Acknowledge task after execution
     task_reject_on_worker_lost=True,
+    
+    # Beat scheduler settings
+    beat_max_loop_interval=5,  # Check schedule every 5 seconds (default is 5)
 )
 
 # Beat schedule for periodic tasks
@@ -79,10 +84,30 @@ app.conf.beat_schedule = {
     # (AI Recommendations now manual via /recommend command)
     "send-morning-briefing": {
         "task": "backend.tasks.morning_briefing.send_morning_briefing",
-        "schedule": crontab(hour=8, minute=0),  # 8:00 AM daily
-        "options": {"expires": 3600},  # Expire after 1h
+        "schedule": crontab(hour=8, minute=0),  # 8:00 AM CET daily
+        "options": {
+            "expires": 3600,  # Expire after 1h
+            "time_limit": 600,  # 10 min timeout
+        },
     },
 }
+
+# Calculate next morning briefing time
+try:
+    tz = pytz.timezone('Europe/Zurich')
+    now_cet = datetime.now(tz)
+    
+    # Next 8:00 AM CET
+    next_run = now_cet.replace(hour=8, minute=0, second=0, microsecond=0)
+    if now_cet.hour >= 8:
+        # Already past 8 AM today, schedule for tomorrow
+        from datetime import timedelta
+        next_run = next_run + timedelta(days=1)
+    
+    next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S %Z")
+except Exception as e:
+    next_run_str = "(calculation error)"
+    logger.error(f"Error calculating next run time: {e}")
 
 # Force print configuration info to stderr (always visible in Railway logs)
 config_banner = f"""
@@ -104,7 +129,12 @@ config_banner = f"""
    ✓ Bonus Trade of the Day (best opportunity)
    ✓ Market news summary
 
-🎯 Next execution: Tomorrow 08:00 CET
+🎯 Next morning briefing: {next_run_str}
+
+⚙️  Settings:
+   • Timezone: {app.conf.timezone}
+   • Task time limit: {app.conf.task_time_limit}s
+   • Beat check interval: {app.conf.beat_max_loop_interval}s
 {'='*70}
 """
 
@@ -114,6 +144,7 @@ print(config_banner, file=sys.stderr, flush=True)
 # Also log it
 logger.info("Celery configuration loaded successfully")
 logger.info(f"Tasks: {len(app.conf.include)} modules, Schedules: {len(app.conf.beat_schedule)} tasks")
+logger.info(f"Next morning briefing scheduled for: {next_run_str}")
 
 if __name__ == "__main__":
     app.start()
