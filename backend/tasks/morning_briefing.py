@@ -15,13 +15,14 @@ Replaces:
 
 Runs daily at 8:00 AM CET via Celery Beat.
 
-Last updated: 2026-02-09 17:05 CET
+Last updated: 2026-02-09 17:10 CET
 
 Fixes:
 - Parallel Perplexity calls to avoid timeout
 - Aggressive timeout (10s per call)
 - Fallback to rule-based if AI fails
 - Better error handling with detailed logs
+- CRITICAL FIX: Changed buy_price -> avg_price to match Redis structure
 """
 
 import logging
@@ -504,22 +505,23 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
             prices_fetched += 1
             logger.debug(f"[METRICS] {symbol}: ${current_price:,.2f}")
             
-            buy_price = position.get("buy_price", 0)
-            qty = position.get("qty", 0)
+            # FIXED: Changed buy_price -> avg_price to match Redis structure
+            avg_price = position.get("avg_price", 0)
+            qty = position.get("quantity", 0)
             
-            if buy_price <= 0 or qty <= 0:
-                logger.warning(f"[METRICS] Invalid position data for {symbol}: buy_price={buy_price}, qty={qty}")
+            if avg_price <= 0 or qty <= 0:
+                logger.warning(f"[METRICS] Invalid position data for {symbol}: avg_price={avg_price}, qty={qty}")
                 continue
             
             # Calculate position value
             position_value = current_price * qty
-            position_cost = buy_price * qty
+            position_cost = avg_price * qty
             
             total_value += position_value
             total_cost += position_cost
             
             # Track best performer
-            pnl_pct = ((current_price - buy_price) / buy_price) * 100
+            pnl_pct = ((current_price - avg_price) / avg_price) * 100
             if pnl_pct > best_performer_pct:
                 best_performer = symbol
                 best_performer_pct = pnl_pct
@@ -584,20 +586,21 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
                 logger.warning(f"[ADVICE] Skipping advice for {symbol}: price unavailable")
                 continue
             
-            buy_price = position.get("buy_price", 0)
-            qty = position.get("qty", 0)
+            # FIXED: Changed buy_price -> avg_price to match Redis structure
+            avg_price = position.get("avg_price", 0)
+            qty = position.get("quantity", 0)
             
-            if buy_price <= 0 or qty <= 0:
+            if avg_price <= 0 or qty <= 0:
                 logger.warning(f"[ADVICE] Skipping advice for {symbol}: invalid position data")
                 continue
             
             # Calculate P&L
-            pnl_pct = ((current_price - buy_price) / buy_price) * 100
+            pnl_pct = ((current_price - avg_price) / avg_price) * 100
             
             tasks.append({
                 "symbol": symbol,
                 "current_price": current_price,
-                "buy_price": buy_price,
+                "avg_price": avg_price,
                 "pnl_pct": pnl_pct,
             })
         
@@ -609,7 +612,7 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
                     perplexity,
                     task["symbol"],
                     task["current_price"],
-                    task["buy_price"],
+                    task["avg_price"],
                     task["pnl_pct"],
                 ): task
                 for task in tasks
@@ -624,7 +627,7 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
                         "symbol": task["symbol"],
                         "pnl_pct": task["pnl_pct"],
                         "current_price": task["current_price"],
-                        "buy_price": task["buy_price"],
+                        "avg_price": task["avg_price"],
                         "advice": advice_text,
                     })
                     
@@ -642,7 +645,7 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
 
 
 def get_quick_position_advice(
-    perplexity, symbol: str, current_price: float, buy_price: float, pnl_pct: float
+    perplexity, symbol: str, current_price: float, avg_price: float, pnl_pct: float
 ) -> str:
     """Get quick AI advice for a single position.
     
@@ -650,7 +653,7 @@ def get_quick_position_advice(
         perplexity: Perplexity client
         symbol: Crypto symbol
         current_price: Current market price
-        buy_price: User's buy price
+        avg_price: User's average buy price
         pnl_pct: P&L percentage
     
     Returns:
@@ -662,7 +665,7 @@ def get_quick_position_advice(
         
         prompt = f"""
 Brief 1-sentence trading advice for {symbol}:
-- Buy: ${buy_price:,.2f}
+- Buy: ${avg_price:,.2f}
 - Current: ${current_price:,.2f}
 - P&L: {pnl_pct:+.1f}%
 
