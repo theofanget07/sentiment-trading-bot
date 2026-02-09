@@ -186,182 +186,125 @@ _Type `/help` for detailed guide with Free limits_
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """📚 **Complete User Guide**
 
-──────────────────
 🆓 **FREE vs 💎 PREMIUM**
 
-**What you get FREE:**
-✅ 5 sentiment analyses/day (reset daily)
-✅ 3 portfolio positions max
-✅ 1 crypto with TP/SL alerts (test feature)
-✅ 3 AI recommendations/day (reset daily)
+**FREE Tier:**
+• 5 sentiment analyses/day
+• 3 portfolio positions max
+• 1 crypto with TP/SL alerts
+• 3 AI recommendations/day
+_Quotas reset daily at midnight UTC_
 
-**Premium Unlocks (€9/month):**
-✅ UNLIMITED analyses & recommendations
-✅ UNLIMITED portfolio positions
-✅ UNLIMITED price alerts (all cryptos)
-✅ Morning Briefing (daily 8h00 CET)
-✅ Trade of the Day (daily 8h00 CET)
-✅ Priority support
-
-💡 **Test everything for FREE, upgrade when ready!**
+**Premium (€9/month):**
+• UNLIMITED everything above
+• Morning Briefing (daily 8h CET)
+• Trade of the Day (daily 8h CET)
+• Priority support
+💡 _Test FREE first, upgrade when ready!_
 
 ──────────────────
 🔍 **SENTIMENT ANALYSIS**
 
-Get AI-powered sentiment analysis (BULLISH/BEARISH/NEUTRAL) with confidence scores.
+`/analyze <text>` - AI sentiment (BULLISH/BEARISH/NEUTRAL)
+_FREE: 5/day | Premium: Unlimited_
 
-**Commands:**
-• `/analyze <text>` - Analyze crypto news or market conditions
-• Send a URL - Auto-scrape article and analyze
-• Send text (30+ chars) - Auto-analyze
-
-**FREE Limit:** 5 analyses/day (resets midnight UTC)
-**Premium:** Unlimited
-
-**Examples:**
-```
-/analyze Bitcoin ETF approval boosts institutional adoption
-/analyze Ethereum merge completes successfully
-```
+Examples:
+• `/analyze Bitcoin ETF approval`
+• Send article URL (auto-scrape)
+• Send text 30+ chars (auto-analyze)
 
 ──────────────────
-💼 **PORTFOLIO MANAGEMENT**
+💼 **PORTFOLIO**
 
-Track your crypto holdings with real-time P&L calculations.
+Track crypto holdings with real-time P&L
 
-**Commands:**
-• `/add <symbol> <quantity> <price>` - Add/update position
-• `/portfolio` - View all positions with P&L
-• `/remove <symbol> [quantity]` - Remove position (full or partial)
-• `/sell <symbol> <quantity> <price>` - Sell and record realized P&L
-• `/summary` - Global performance analytics
+Commands:
+• `/add BTC 1 45000` - Add/update position
+• `/portfolio` - View all positions
+• `/remove BTC 0.3` - Remove partial/full
+• `/sell BTC 0.5 75000` - Sell & record P&L
+• `/summary` - Performance analytics
 • `/history` - Last 5 transactions
 
-**FREE Limit:** 3 positions max
-**Premium:** Unlimited positions
-
-**Examples:**
-```
-/add BTC 1 45000
-/add ETH 10 2500
-/remove BTC 0.3
-/sell BTC 0.5 75000
-```
+_FREE: 3 positions | Premium: Unlimited_
 
 ──────────────────
 🔔 **PRICE ALERTS (TP/SL)**
 
-Set Take Profit (TP) and Stop Loss (SL) alerts. Monitored every 15 minutes.
+Set Take Profit & Stop Loss alerts (checked every 15min)
 
-**Commands:**
-• `/setalert <symbol> tp <price>` - Take Profit (above current)
-• `/setalert <symbol> sl <price>` - Stop Loss (below current)
-• `/listalerts` - View all active alerts
-• `/removealert <symbol>` - Delete all alerts for a crypto
+Commands:
+• `/setalert BTC tp 100000` - Take Profit
+• `/setalert BTC sl 40000` - Stop Loss
+• `/listalerts` - View all alerts
+• `/removealert BTC` - Delete alerts
 
-**FREE Limit:** 1 crypto with alerts (test feature)
-**Premium:** Unlimited cryptos with alerts
+💡 _You can set BOTH TP & SL for same crypto!_
 
-**Examples:**
-```
-/setalert BTC tp 100000
-/setalert BTC sl 40000
-/setalert ETH tp 5000
-/removealert BTC
-```
-
-💡 **You can set BOTH TP and SL independently for the same crypto!**
+_FREE: 1 crypto | Premium: Unlimited_
 
 ──────────────────
 🤖 **AI RECOMMENDATIONS**
 
-Get personalized trading insights based on your portfolio.
+`/recommend` - Get personalized portfolio insights:
+• Diversification analysis
+• Risk assessment
+• Market sentiment for your holdings
 
-**Command:**
-• `/recommend` - AI-powered analysis of:
-  - Portfolio composition & diversification
-  - Market sentiment for your holdings
-  - Risk assessment & suggestions
+_FREE: 3/day | Premium: Unlimited_
 
-**FREE Limit:** 3 recommendations/day (resets midnight UTC)
-**Premium:** Unlimited
-
-⚠️ **Remember:** For informational purposes only. NOT financial advice.
+⚠️ _Informational only, NOT financial advice_
 
 ──────────────────
-💎 **PREMIUM-ONLY FEATURES**
+💎 **PREMIUM-ONLY**
 
-**Morning Briefing (8h00 CET daily):**
+**Morning Briefing** (8h CET daily)
 • Market overview & sentiment
-• Top movers (gainers/losers)
-• Key news & events
+• Top movers & key news
 
-**Trade of the Day (8h00 CET daily):**
-• AI-selected trading opportunity
+**Trade of the Day** (8h CET daily)
+• AI-selected opportunity
 • Entry/exit suggestions
-• Risk analysis
 
-🚀 **Upgrade:** `/subscribe` for €9/month
-
-──────────────────
-💳 **SUBSCRIPTION MANAGEMENT**
-
-**Commands:**
-• `/subscribe` - Upgrade to Premium (€9/month)
-• `/manage` - View and manage your subscription
-
-**Payment:**
-✅ Secure via Stripe
-✅ Cancel anytime
-✅ Instant activation
+🚀 _Upgrade: `/subscribe` for €9/month_
 
 ──────────────────
-🔒 **YOUR DATA (GDPR)**
+💳 **SUBSCRIPTION**
 
-Full GDPR compliance with complete data control.
+• `/subscribe` - Upgrade to Premium
+• `/manage` - View/manage subscription
+• Secure Stripe payments
+• Cancel anytime
 
-**Commands:**
-• `/mydata` - Download all your data (JSON format)
-• `/deletedata` - Permanently delete your account
+──────────────────
+🔒 **GDPR DATA RIGHTS**
+
+• `/mydata` - Download all your data (JSON)
+• `/deletedata CONFIRM` - Delete account
 
 **Your Rights:**
-• Right to access (Art. 15) - Download everything
-• Right to erasure (Art. 17) - Delete everything
-• Right to portability (Art. 20) - Export to JSON
-• Auto-deletion after 180 days of inactivity
+• Access (Art. 15) - Export everything
+• Erasure (Art. 17) - Delete everything
+• Portability (Art. 20) - JSON format
+• Auto-deletion after 180 days inactivity
 
-[Full Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)
+[Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)
 
 ──────────────────
-🚀 **SUPPORTED CRYPTOS**
+📊 **SUPPORTED CRYPTOS**
 
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
 ──────────────────
-⚠️ **RISK DISCLAIMER**
+⚠️ **DISCLAIMER**
 
 This bot provides informational services ONLY.
 • NOT financial advice
-• Crypto trading = HIGH RISK
-• You may lose your ENTIRE investment
+• Crypto = HIGH RISK
+• You may lose ENTIRE investment
 • Always DYOR (Do Your Own Research)
 
 [Terms of Service](https://sentiment-trading-bot-production.up.railway.app/terms)
-
-──────────────────
-💡 **QUICK COMPARISON**
-
-┌─────────────────────────────────┐
-│ Feature         │ FREE │ PREMIUM │
-├─────────────────────────────────┤
-│ Analyses/day    │  5   │    ∞    │
-│ Positions       │  3   │    ∞    │
-│ Alerts (cryptos)│  1   │    ∞    │
-│ AI Reco/day     │  3   │    ∞    │
-│ Morning Briefing│  ❌  │   ✅    │
-│ Trade of the Day│  ❌  │   ✅    │
-│ Price           │ FREE │  €9/mo  │
-└─────────────────────────────────┘
 
 _Back to main menu: `/start`_
 """
