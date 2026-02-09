@@ -127,22 +127,33 @@ Your AI-powered crypto assistant
 
 📊 **Sentiment Analysis**
 • `/analyze` - AI-powered market analysis
+  _FREE: 5 analyses/day | Premium: Unlimited_
 • `/recommend` - Get personalized insights
+  _FREE: 3 recommendations/day | Premium: Unlimited_
 
 💼 **Portfolio Tracking**
 • `/portfolio` - View your positions & P&L
 • `/add` - Add a crypto position
+  _FREE: 3 positions max | Premium: Unlimited_
 • `/sell` - Sell and record profit/loss
 • `/summary` - Complete performance report
 • `/history` - Transaction history
 
-🔔 **Price Alerts**
+🔔 **Price Alerts (TP/SL)**
 • `/setalert` - Set Take Profit or Stop Loss
+  _FREE: 1 crypto with alerts (test) | Premium: Unlimited_
 • `/listalerts` - View all your alerts
 • `/removealert` - Delete an alert
 
-💳 **Premium Subscription**
-• `/subscribe` - Upgrade to Premium (€9/month)
+💎 **Premium Features (€9/month)**
+✅ Unlimited analyses & recommendations
+✅ Unlimited portfolio positions
+✅ Unlimited price alerts (TP/SL)
+✅ Morning Briefing (daily 8h00 CET)
+✅ Trade of the Day (daily 8h00 CET)
+
+💳 **Subscription**
+• `/subscribe` - Upgrade to Premium
 • `/manage` - Manage your subscription
 
 🔒 **Privacy & Data (GDPR)**
@@ -158,6 +169,7 @@ Your AI-powered crypto assistant
 /setalert BTC tp 100000
 /setalert BTC sl 40000
 /sell BTC 0.3 75000
+/recommend
 ```
 
 ──────────────────
@@ -167,12 +179,31 @@ BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 📊 Data: [CoinGecko](https://coingecko.com) + [Perplexity AI](https://perplexity.ai)
 📄 [Terms](https://sentiment-trading-bot-production.up.railway.app/terms) | [Privacy](https://sentiment-trading-bot-production.up.railway.app/privacy)
 
-_Type `/help` for detailed guide_
+_Type `/help` for detailed guide with Free limits_
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', disable_web_page_preview=True)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """📚 **Complete User Guide**
+
+──────────────────
+🆓 **FREE vs 💎 PREMIUM**
+
+**What you get FREE:**
+✅ 5 sentiment analyses/day (reset daily)
+✅ 3 portfolio positions max
+✅ 1 crypto with TP/SL alerts (test feature)
+✅ 3 AI recommendations/day (reset daily)
+
+**Premium Unlocks (€9/month):**
+✅ UNLIMITED analyses & recommendations
+✅ UNLIMITED portfolio positions
+✅ UNLIMITED price alerts (all cryptos)
+✅ Morning Briefing (daily 8h00 CET)
+✅ Trade of the Day (daily 8h00 CET)
+✅ Priority support
+
+💡 **Test everything for FREE, upgrade when ready!**
 
 ──────────────────
 🔍 **SENTIMENT ANALYSIS**
@@ -183,6 +214,9 @@ Get AI-powered sentiment analysis (BULLISH/BEARISH/NEUTRAL) with confidence scor
 • `/analyze <text>` - Analyze crypto news or market conditions
 • Send a URL - Auto-scrape article and analyze
 • Send text (30+ chars) - Auto-analyze
+
+**FREE Limit:** 5 analyses/day (resets midnight UTC)
+**Premium:** Unlimited
 
 **Examples:**
 ```
@@ -203,6 +237,9 @@ Track your crypto holdings with real-time P&L calculations.
 • `/summary` - Global performance analytics
 • `/history` - Last 5 transactions
 
+**FREE Limit:** 3 positions max
+**Premium:** Unlimited positions
+
 **Examples:**
 ```
 /add BTC 1 45000
@@ -221,6 +258,9 @@ Set Take Profit (TP) and Stop Loss (SL) alerts. Monitored every 15 minutes.
 • `/setalert <symbol> sl <price>` - Stop Loss (below current)
 • `/listalerts` - View all active alerts
 • `/removealert <symbol>` - Delete all alerts for a crypto
+
+**FREE Limit:** 1 crypto with alerts (test feature)
+**Premium:** Unlimited cryptos with alerts
 
 **Examples:**
 ```
@@ -243,23 +283,37 @@ Get personalized trading insights based on your portfolio.
   - Market sentiment for your holdings
   - Risk assessment & suggestions
 
+**FREE Limit:** 3 recommendations/day (resets midnight UTC)
+**Premium:** Unlimited
+
 ⚠️ **Remember:** For informational purposes only. NOT financial advice.
 
 ──────────────────
-💳 **PREMIUM SUBSCRIPTION**
+💎 **PREMIUM-ONLY FEATURES**
 
-Unlock advanced features with Premium at €9/month.
+**Morning Briefing (8h00 CET daily):**
+• Market overview & sentiment
+• Top movers (gainers/losers)
+• Key news & events
+
+**Trade of the Day (8h00 CET daily):**
+• AI-selected trading opportunity
+• Entry/exit suggestions
+• Risk analysis
+
+🚀 **Upgrade:** `/subscribe` for €9/month
+
+──────────────────
+💳 **SUBSCRIPTION MANAGEMENT**
 
 **Commands:**
-• `/subscribe` - Upgrade to Premium
-• `/manage` - View and manage subscription
+• `/subscribe` - Upgrade to Premium (€9/month)
+• `/manage` - View and manage your subscription
 
-**Premium Benefits:**
-✅ Unlimited portfolio tracking
-✅ Advanced AI recommendations
-✅ Real-time alerts (TP/SL)
-✅ Priority support
-✅ Early access to new features
+**Payment:**
+✅ Secure via Stripe
+✅ Cancel anytime
+✅ Instant activation
 
 ──────────────────
 🔒 **YOUR DATA (GDPR)**
@@ -295,6 +349,20 @@ This bot provides informational services ONLY.
 [Terms of Service](https://sentiment-trading-bot-production.up.railway.app/terms)
 
 ──────────────────
+💡 **QUICK COMPARISON**
+
+┌─────────────────────────────────┐
+│ Feature         │ FREE │ PREMIUM │
+├─────────────────────────────────┤
+│ Analyses/day    │  5   │    ∞    │
+│ Positions       │  3   │    ∞    │
+│ Alerts (cryptos)│  1   │    ∞    │
+│ AI Reco/day     │  3   │    ∞    │
+│ Morning Briefing│  ❌  │   ✅    │
+│ Trade of the Day│  ❌  │   ✅    │
+│ Price           │ FREE │  €9/mo  │
+└─────────────────────────────────┘
+
 _Back to main menu: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
