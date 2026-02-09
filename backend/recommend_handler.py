@@ -34,22 +34,29 @@ def clean_perplexity_citations(text: str) -> str:
 
 def format_ai_analysis(reasoning: str) -> str:
     """
-    Format AI reasoning with better structure and visual hierarchy.
-    Identifies section headers and bolds them.
+    Format AI reasoning for Telegram with proper markdown.
+    Telegram only supports: **bold**, _italic_, `code`, [links](url)
+    Does NOT support: # headers, ## subheaders
     """
     cleaned = clean_perplexity_citations(reasoning)
+    
+    # Remove markdown headers (# and ##) and replace with bold
+    cleaned = re.sub(r'^#{1,6}\s+(.+)$', r'**\1**', cleaned, flags=re.MULTILINE)
     
     # Split into paragraphs
     paragraphs = [p.strip() for p in cleaned.split('\n\n') if p.strip()]
     
     formatted = []
     for para in paragraphs:
-        # Bold section headers (text before colon if short enough)
-        if ':' in para:
+        # Bold section labels (text before colon)
+        if ':' in para and not para.startswith('http'):
+            # Check if it looks like a section header
             parts = para.split(':', 1)
-            if len(parts[0]) < 50:  # Likely a header
-                formatted.append(f"**{parts[0]}:**{parts[1]}")
+            if len(parts[0]) < 60 and '\n' not in parts[0]:
+                # Make the label bold
+                formatted.append(f"**{parts[0].strip()}:**{parts[1]}")
                 continue
+        
         formatted.append(para)
     
     return '\n\n'.join(formatted)
@@ -192,50 +199,45 @@ async def recommend_command(
             )
             return
         
-        # Send recommendations with enhanced UX formatting
+        # Send recommendations with clean formatting
         for rec in all_recommendations:
             emoji_map = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}
             rec_emoji = emoji_map.get(rec["recommendation"], "⚪")
             
             # P&L visual indicators
             pnl_emoji = "🟢" if rec["pnl_percent"] > 0 else ("🔴" if rec["pnl_percent"] < 0 else "⚪")
-            pnl_label = "PROFIT" if rec["pnl_percent"] > 0 else ("LOSS" if rec["pnl_percent"] < 0 else "NEUTRAL")
+            pnl_label = "PROFIT" if rec["pnl_percent"] > 0 else ("LOSS" if rec["pnl_percent"] < 0 else "BREAK-EVEN")
             
-            # Format AI analysis with structure
+            # Format AI analysis (removes citations and markdown headers)
             formatted_reasoning = format_ai_analysis(rec["reasoning"])
             
-            # Build enhanced response
-            response = f"{rec_emoji} **AI RECOMMENDATION - {rec['symbol']}**\n"
-            response += f"\n━━━━━━━━━━━━━━━━━━\n"
-            response += f"💼 **YOUR POSITION**\n"
-            response += f"━━━━━━━━━━━━━━━━━━\n\n"
+            # Build clean, readable response
+            response = f"{rec_emoji} **AI RECOMMENDATION \u2014 {rec['symbol']}**\n\n"
             
-            # Position details with bullets and bold labels
-            response += f"• **Holdings:** `{rec['qty']:.8g}` {rec['symbol']}\n"
-            response += f"• **Entry Price:** `{format_price(rec['avg_price'])}`\n"
-            response += f"• **Current Price:** `{format_price(rec['current_price'])}`\n"
-            response += f"• {pnl_emoji} **{pnl_label}:** `{rec['pnl_usd']:+,.2f} USD` ({rec['pnl_percent']:+.2f}%)\n"
+            # Position summary
+            response += f"💼 **YOUR POSITION**\n\n"
+            response += f"Quantity: `{rec['qty']:.8g}` {rec['symbol']}\n"
+            response += f"Entry: `{format_price(rec['avg_price'])}` → Current: `{format_price(rec['current_price'])}`\n"
+            response += f"{pnl_emoji} **{pnl_label}:** `{rec['pnl_usd']:+,.2f} USD` _({rec['pnl_percent']:+.2f}%)_\n\n"
             
-            response += f"\n━━━━━━━━━━━━━━━━━━\n"
+            # Recommendation
             response += f"🎯 **RECOMMENDATION: {rec['recommendation']}**\n"
-            response += f"🔒 **Confidence:** {rec['confidence']}%\n"
-            response += f"━━━━━━━━━━━━━━━━━━\n\n"
+            response += f"🔒 _Confidence: {rec['confidence']}%_\n\n"
             
-            # AI Analysis section
-            response += f"🤖 **AI Analysis:**\n\n{formatted_reasoning}\n"
+            response += f"────────\n\n"
             
-            # Disclaimer with better structure
-            response += f"\n━━━━━━━━━━━━━━━━━━\n"
-            response += f"⚠️ **DISCLAIMER**\n"
-            response += f"━━━━━━━━━━━━━━━━━━\n\n"
-            response += f"_This recommendation is **informational only** and is **NOT financial advice**._\n\n"
-            response += f"**Key Risks:**\n"
-            response += f"• High volatility - **possible total loss**\n"
-            response += f"• Past performance ≠ future results\n"
-            response += f"• **Always DYOR** (Do Your Own Research)\n"
-            response += f"• Consult a **licensed financial advisor**\n\n"
-            response += f"_Powered by [Perplexity AI](https://www.perplexity.ai)_\n"
-            response += f"_Portfolio overview: `/summary`_"
+            # AI Analysis
+            response += f"🤖 **AI ANALYSIS**\n\n{formatted_reasoning}\n\n"
+            
+            response += f"────────\n\n"
+            
+            # Disclaimer
+            response += f"⚠️ **DISCLAIMER**\n\n"
+            response += f"_This is **informational only**, NOT financial advice._\n\n"
+            response += f"🛑 **Risks:** High volatility, possible total loss\n"
+            response += f"📊 Past performance ≠ future results\n"
+            response += f"🔍 **Always DYOR** \u2014 Consult a licensed advisor\n\n"
+            response += f"_Powered by [Perplexity AI](https://www.perplexity.ai) | `/summary` for full portfolio_"
             
             await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         
