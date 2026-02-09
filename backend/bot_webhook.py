@@ -127,7 +127,7 @@ Your AI-powered crypto assistant
 
 📊 **Sentiment Analysis**
 • `/analyze` - AI-powered market analysis
-  _FREE: 5 analyses/day | Premium: Unlimited_
+  _FREE: 3 analyses/day | Premium: Unlimited_
 • `/recommend` - Get personalized insights
   _FREE: 3 recommendations/week | Premium: Unlimited_
 
@@ -189,7 +189,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🆓 **FREE vs 💎 PREMIUM**
 
 **FREE Tier:**
-• 5 sentiment analyses/day
+• 3 sentiment analyses/day
 • 3 portfolio positions max
 • 1 crypto with TP/SL alerts
 • 3 AI recommendations/week (resets Monday)
@@ -206,7 +206,7 @@ _Daily quotas reset at midnight UTC_
 🔍 **SENTIMENT ANALYSIS**
 
 `/analyze <text>` - AI sentiment (BULLISH/BEARISH/NEUTRAL)
-_FREE: 5/day | Premium: Unlimited_
+_FREE: 3/day | Premium: Unlimited_
 
 Examples:
 • `/analyze Bitcoin ETF approval`
