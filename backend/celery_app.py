@@ -6,11 +6,11 @@ This module configures Celery for background task processing:
 - Redis: Message broker and result backend
 
 Features powered by Celery:
-1. Price alerts monitoring (every 15 minutes)
-2. Morning Briefing (daily at 8am) - combines Daily Insights + Bonus Trade
+1. Price alerts monitoring (every 15 minutes at :02, :17, :32, :47)
+2. Morning Briefing (daily at 7:00 UTC = 8:00 CET)
 3. AI Recommendations (manual via /recommend command)
 
-Last updated: 2026-02-08 19:50 CET
+Last updated: 2026-02-09 17:00 CET
 """
 
 import os
@@ -35,7 +35,7 @@ app = Celery(
     include=[
         "backend.tasks.alerts_checker",
         "backend.tasks.ai_recommender",  # Manual /recommend command
-        "backend.tasks.morning_briefing",  # NEW: Combined daily digest
+        "backend.tasks.morning_briefing",  # Combined daily digest
     ],
 )
 
@@ -45,17 +45,17 @@ app.conf.update(
     task_serializer="json",
     accept_content=["json"],
     result_serializer="json",
-    timezone="Europe/Zurich",  # CET timezone
+    timezone="UTC",  # Use UTC for consistency
     enable_utc=True,
     
     # Task execution
     task_track_started=True,
-    task_time_limit=600,  # 10 minutes max per task (increased for morning briefing)
+    task_time_limit=600,  # 10 minutes max per task
     task_soft_time_limit=540,  # 9 minutes soft limit
     
     # Worker settings
     worker_prefetch_multiplier=1,  # One task at a time per worker
-    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks (reduced)
+    worker_max_tasks_per_child=50,  # Restart worker after 50 tasks
     
     # Result backend
     result_expires=3600,  # Results expire after 1 hour
@@ -66,24 +66,23 @@ app.conf.update(
     task_reject_on_worker_lost=True,
     
     # Beat scheduler settings
-    beat_max_loop_interval=5,  # Check schedule every 5 seconds (default is 5)
+    beat_max_loop_interval=5,  # Check schedule every 5 seconds
 )
 
 # Beat schedule for periodic tasks
 app.conf.beat_schedule = {
-    # Feature 1: Price alerts - every 15 minutes
+    # Feature 1: Price alerts - every 15 minutes (OFFSET BY 2 MIN to avoid collision)
     "check-price-alerts": {
         "task": "backend.tasks.alerts_checker.check_all_price_alerts",
-        "schedule": crontab(minute="*/15"),  # Every 15 minutes
+        "schedule": crontab(minute="2,17,32,47"),  # 07:02, 07:17, 07:32, 07:47 UTC
         "options": {"expires": 600},  # Expire if not run within 10min
     },
     
-    # NEW: Morning Briefing - daily at 8:00 AM CET
+    # Morning Briefing - daily at 7:00 AM UTC (= 8:00 AM CET)
     # Combines: Daily Insights + Bonus Trade of the Day
-    # (AI Recommendations now manual via /recommend command)
     "send-morning-briefing": {
         "task": "backend.tasks.morning_briefing.send_morning_briefing",
-        "schedule": crontab(hour=8, minute=0),  # 8:00 AM CET daily
+        "schedule": crontab(hour=7, minute=0),  # 7:00 UTC = 8:00 CET (UTC+1)
         "options": {
             "expires": 3600,  # Expire after 1h
             "time_limit": 600,  # 10 min timeout
@@ -91,19 +90,21 @@ app.conf.beat_schedule = {
     },
 }
 
-# Calculate next morning briefing time (using UTC+1 for CET)
+# Calculate next morning briefing time
 try:
-    # CET = UTC+1 (Europe/Zurich)
-    cet_offset = timezone(timedelta(hours=1))
-    now_cet = datetime.now(cet_offset)
+    # Calculate next 7:00 UTC (= 8:00 CET)
+    now_utc = datetime.now(timezone.utc)
     
-    # Next 8:00 AM CET
-    next_run = now_cet.replace(hour=8, minute=0, second=0, microsecond=0)
-    if now_cet.hour >= 8:
-        # Already past 8 AM today, schedule for tomorrow
+    # Next 7:00 AM UTC
+    next_run = now_utc.replace(hour=7, minute=0, second=0, microsecond=0)
+    if now_utc.hour >= 7:
+        # Already past 7 AM UTC today, schedule for tomorrow
         next_run = next_run + timedelta(days=1)
     
-    next_run_str = next_run.strftime("%Y-%m-%d %H:%M:%S %Z")
+    # Convert to CET for display (UTC+1)
+    cet_offset = timezone(timedelta(hours=1))
+    next_run_cet = next_run.astimezone(cet_offset)
+    next_run_str = next_run_cet.strftime("%Y-%m-%d %H:%M:%S CET")
 except Exception as e:
     next_run_str = "(calculation error)"
     logger.error(f"Error calculating next run time: {e}")
@@ -116,11 +117,11 @@ config_banner = f"""
 📦 Tasks included: {len(app.conf.include)} modules
    1. backend.tasks.alerts_checker
    2. backend.tasks.ai_recommender (manual via /recommend)
-   3. backend.tasks.morning_briefing ⭐ NEW
+   3. backend.tasks.morning_briefing ⭐ FIXED
 
 ⏰ Beat schedules: {len(app.conf.beat_schedule)} tasks configured
-   1. check-price-alerts     → Every 15 minutes
-   2. send-morning-briefing  → Daily 08:00 CET ⭐ NEW
+   1. check-price-alerts     → Every 15min at :02,:17,:32,:47 ⭐ FIXED COLLISION
+   2. send-morning-briefing  → Daily 07:00 UTC (08:00 CET) ⭐ FIXED TIMEZONE
 
 📋 Morning Briefing includes:
    ✓ Portfolio metrics (value, 24h change, top performer)
@@ -134,6 +135,11 @@ config_banner = f"""
    • Timezone: {app.conf.timezone}
    • Task time limit: {app.conf.task_time_limit}s
    • Beat check interval: {app.conf.beat_max_loop_interval}s
+
+🔧 Recent fixes:
+   • Fixed timezone: 7:00 UTC = 8:00 CET (was 8:00 UTC = 9:00 CET)
+   • Fixed collision: Price alerts offset by 2 min
+   • Next fixes: Parallel Perplexity calls + better error handling
 {'='*70}
 """
 
