@@ -129,7 +129,7 @@ Your AI-powered crypto assistant
 • `/analyze` - AI-powered market analysis
   _FREE: 5 analyses/day | Premium: Unlimited_
 • `/recommend` - Get personalized insights
-  _FREE: 3 recommendations/day | Premium: Unlimited_
+  _FREE: 3 recommendations/week | Premium: Unlimited_
 
 💼 **Portfolio Tracking**
 • `/portfolio` - View your positions & P&L
@@ -192,8 +192,8 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • 5 sentiment analyses/day
 • 3 portfolio positions max
 • 1 crypto with TP/SL alerts
-• 3 AI recommendations/day
-_Quotas reset daily at midnight UTC_
+• 3 AI recommendations/week (resets Monday)
+_Daily quotas reset at midnight UTC_
 
 **Premium (€9/month):**
 • UNLIMITED everything above
@@ -251,7 +251,7 @@ _FREE: 1 crypto | Premium: Unlimited_
 • Risk assessment
 • Market sentiment for your holdings
 
-_FREE: 3/day | Premium: Unlimited_
+_FREE: 3/week (resets Monday) | Premium: Unlimited_
 
 ⚠️ _Informational only, NOT financial advice_
 
