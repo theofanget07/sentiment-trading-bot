@@ -15,7 +15,13 @@ Replaces:
 
 Runs daily at 8:00 AM CET via Celery Beat.
 
-Last updated: 2026-02-08 18:10 CET
+Last updated: 2026-02-09 17:05 CET
+
+Fixes:
+- Parallel Perplexity calls to avoid timeout
+- Aggressive timeout (10s per call)
+- Fallback to rule-based if AI fails
+- Better error handling with detailed logs
 """
 
 import logging
@@ -26,11 +32,16 @@ from backend.crypto_prices import get_crypto_price, get_multiple_prices, SYMBOL_
 from backend.services.perplexity_client import get_perplexity_client
 from backend.services.notification_service import get_notification_service
 import time
+import concurrent.futures
 
 logger = logging.getLogger(__name__)
 
 # All supported crypto symbols for Bonus Trade analysis
 SUPPORTED_CRYPTOS = list(SYMBOL_TO_ID.keys())
+
+# Timeout for AI calls (aggressive to avoid task timeout)
+PERPLEXITY_TIMEOUT = 10  # seconds per call
+MAX_PARALLEL_CALLS = 3  # Max concurrent API calls
 
 
 @app.task(name="backend.tasks.morning_briefing.send_morning_briefing")
@@ -53,29 +64,40 @@ def send_morning_briefing() -> Dict:
     users_processed = 0
     errors = 0
     skipped_no_portfolio = 0
-    skipped_errors = 0
     
     # Step 1: Find Bonus Trade of the Day (same for ALL users)
     logger.info("[MORNING BRIEFING] 📊 Step 1/3: Analyzing Bonus Trade of the Day...")
-    bonus_trade = find_bonus_trade_of_day(perplexity)
-    
-    if not bonus_trade:
-        logger.warning("[MORNING BRIEFING] ⚠️ No Bonus Trade found, using fallback")
-        # Use fallback instead of aborting
+    try:
+        bonus_trade = find_bonus_trade_of_day(perplexity)
+        
+        if not bonus_trade:
+            logger.warning("[MORNING BRIEFING] ⚠️ No Bonus Trade found, using fallback")
+            bonus_trade = {
+                "symbol": "BTC",
+                "action": "HOLD",
+                "entry_price": 0,
+                "reasoning": "Markets are consolidating. Wait for clearer signals before entering new positions.",
+                "confidence": 50,
+                "risk_level": "MEDIUM",
+                "score": 50,
+            }
+        
+        logger.info(
+            f"[MORNING BRIEFING] 🏆 Bonus Trade: {bonus_trade['symbol']} - "
+            f"{bonus_trade['action']} (Confidence: {bonus_trade['confidence']}%)"
+        )
+    except Exception as e:
+        logger.error(f"[MORNING BRIEFING] ❌ Error finding bonus trade: {e}", exc_info=True)
+        # Use fallback
         bonus_trade = {
             "symbol": "BTC",
             "action": "HOLD",
             "entry_price": 0,
-            "reasoning": "Markets are consolidating. Wait for clearer signals before entering new positions.",
+            "reasoning": "Market analysis temporarily unavailable. Practice patience and wait for clear signals.",
             "confidence": 50,
             "risk_level": "MEDIUM",
             "score": 50,
         }
-    
-    logger.info(
-        f"[MORNING BRIEFING] 🏆 Bonus Trade: {bonus_trade['symbol']} - "
-        f"{bonus_trade['action']} (Confidence: {bonus_trade['confidence']}%)"
-    )
     
     # Step 2: Send personalized briefing to each user
     logger.info("[MORNING BRIEFING] 👥 Step 2/3: Processing users...")
@@ -187,7 +209,6 @@ def send_morning_briefing() -> Dict:
             "users_processed": users_processed,
             "briefings_sent": briefings_sent,
             "skipped_no_portfolio": skipped_no_portfolio,
-            "skipped_errors": skipped_errors,
             "errors": errors,
             "bonus_trade": {
                 "symbol": bonus_trade["symbol"],
@@ -221,7 +242,7 @@ def send_morning_briefing() -> Dict:
 def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
     """Find the best crypto trading opportunity of the day.
     
-    Analyzes all supported cryptos and selects the highest-conviction BUY signal.
+    Analyzes top cryptos IN PARALLEL and selects the highest-conviction BUY signal.
     
     Args:
         perplexity: Perplexity client instance
@@ -241,39 +262,51 @@ def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
             logger.error(f"[BONUS TRADE] ❌ Too few prices available ({len(valid_cryptos)}), aborting")
             return None
         
-        # Limit to top 5 by market cap for faster analysis
-        top_cryptos = ["BTC", "ETH", "SOL", "BNB", "XRP"]
+        # Limit to top 3 by market cap for faster analysis (REDUCED FROM 5)
+        top_cryptos = ["BTC", "ETH", "SOL"]
         analysis_cryptos = [c for c in top_cryptos if c in valid_cryptos]
         
         if not analysis_cryptos:
-            analysis_cryptos = valid_cryptos[:5]  # Fallback to first 5 available
+            analysis_cryptos = valid_cryptos[:3]  # Fallback to first 3 available
         
-        logger.info(f"[BONUS TRADE] 🔍 Analyzing {len(analysis_cryptos)} cryptos: {analysis_cryptos}")
+        logger.info(f"[BONUS TRADE] 🔍 Analyzing {len(analysis_cryptos)} cryptos IN PARALLEL: {analysis_cryptos}")
         
-        # Analyze opportunities
-        logger.info("[BONUS TRADE] 🤖 Analyzing trading opportunities with Perplexity AI...")
+        # ANALYZE IN PARALLEL to avoid timeout
+        logger.info("[BONUS TRADE] 🤖 Analyzing trading opportunities with Perplexity AI (parallel calls)...")
         opportunities = []
         
-        for symbol in analysis_cryptos:
-            try:
-                analysis = analyze_trade_opportunity(
+        # Use ThreadPoolExecutor for parallel API calls
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as executor:
+            # Submit all tasks
+            future_to_symbol = {
+                executor.submit(
+                    analyze_trade_opportunity,
                     symbol=symbol,
                     current_price=prices[symbol],
                     perplexity=perplexity,
-                )
-                
-                if analysis:
-                    opportunities.append(analysis)
-                    logger.info(
-                        f"[BONUS TRADE] {symbol}: Score={analysis['score']:.0f}, "
-                        f"Confidence={analysis['confidence']}%, Action={analysis['action']}"
-                    )
-                else:
-                    logger.info(f"[BONUS TRADE] {symbol}: No strong signal")
+                ): symbol
+                for symbol in analysis_cryptos
+            }
             
-            except Exception as e:
-                logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
-                continue
+            # Collect results with timeout
+            for future in concurrent.futures.as_completed(future_to_symbol, timeout=45):
+                symbol = future_to_symbol[future]
+                try:
+                    analysis = future.result(timeout=5)  # Additional per-result timeout
+                    
+                    if analysis:
+                        opportunities.append(analysis)
+                        logger.info(
+                            f"[BONUS TRADE] {symbol}: Score={analysis['score']:.0f}, "
+                            f"Confidence={analysis['confidence']}%, Action={analysis['action']}"
+                        )
+                    else:
+                        logger.info(f"[BONUS TRADE] {symbol}: No strong signal")
+                
+                except concurrent.futures.TimeoutError:
+                    logger.error(f"[BONUS TRADE] ❌ Timeout analyzing {symbol}")
+                except Exception as e:
+                    logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
         
         if not opportunities:
             logger.error("[BONUS TRADE] ❌ No opportunities identified")
@@ -313,23 +346,15 @@ Analyze {symbol} as a potential "Trade of the Day" opportunity:
 
 Current Price: ${current_price:,.2f}
 
-Provide analysis covering:
+Provide concise analysis:
 
-1. **Trading Recommendation**: BUY/SELL/HOLD
-2. **Confidence Score**: 0-100 (how confident in this trade)
-3. **Entry Strategy**: Optimal entry price range
-4. **Price Targets**: Take-profit levels (TP1, TP2, TP3)
-5. **Stop Loss**: Risk management level
-6. **Key Catalysts**: Top 3 reasons for this opportunity
-7. **Risk Level**: LOW/MEDIUM/HIGH
+1. **Recommendation**: BUY/SELL/HOLD
+2. **Confidence**: 0-100
+3. **Entry Price**: Optimal range
+4. **Key Catalyst**: Top reason (1 sentence)
+5. **Risk**: LOW/MEDIUM/HIGH
 
-Focus on:
-- Recent news and developments (last 24-48 hours)
-- Technical momentum and key levels
-- Market sentiment shifts
-- Volume and liquidity analysis
-
-Be specific and actionable for retail traders.
+Focus on last 24-48 hours only. Be specific and brief.
 """
         
         import requests
@@ -341,12 +366,12 @@ Be specific and actionable for retail traders.
                 "messages": [
                     {
                         "role": "system",
-                        "content": "You are a professional crypto trading analyst specializing in identifying high-conviction trade setups."
+                        "content": "You are a concise crypto trading analyst. Provide brief, actionable analysis."
                     },
                     {"role": "user", "content": prompt},
                 ],
             },
-            timeout=45,
+            timeout=PERPLEXITY_TIMEOUT,  # Aggressive timeout
         )
         response.raise_for_status()
         
@@ -375,8 +400,11 @@ Be specific and actionable for retail traders.
             "score": score,
         }
     
+    except requests.exceptions.Timeout:
+        logger.error(f"[BONUS TRADE] ❌ Timeout analyzing {symbol} after {PERPLEXITY_TIMEOUT}s")
+        return None
     except Exception as e:
-        logger.error(f"Error analyzing {symbol}: {e}")
+        logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
         return None
 
 
@@ -533,6 +561,8 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
 def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
     """Generate AI-powered advice for each portfolio position.
     
+    Uses PARALLEL calls to speed up processing.
+    
     Args:
         portfolio: User's portfolio dict
         perplexity: Perplexity client instance
@@ -543,46 +573,67 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
     advice_list = []
     
     try:
-        logger.info(f"[ADVICE] Generating advice for {len(portfolio)} positions...")
+        logger.info(f"[ADVICE] Generating advice for {len(portfolio)} positions IN PARALLEL...")
         
+        # Prepare tasks
+        tasks = []
         for symbol, position in portfolio.items():
-            try:
-                # Get current price
-                current_price = get_crypto_price(symbol, force_refresh=False)
-                if not current_price or current_price <= 0:
-                    logger.warning(f"[ADVICE] Skipping advice for {symbol}: price unavailable")
-                    continue
-                
-                buy_price = position.get("buy_price", 0)
-                qty = position.get("qty", 0)
-                
-                if buy_price <= 0 or qty <= 0:
-                    logger.warning(f"[ADVICE] Skipping advice for {symbol}: invalid position data")
-                    continue
-                
-                # Calculate P&L
-                pnl_pct = ((current_price - buy_price) / buy_price) * 100
-                
-                # Generate concise advice using Perplexity
-                advice_text = get_quick_position_advice(
-                    perplexity, symbol, current_price, buy_price, pnl_pct
-                )
-                
-                advice_list.append({
-                    "symbol": symbol,
-                    "pnl_pct": pnl_pct,
-                    "current_price": current_price,
-                    "buy_price": buy_price,
-                    "advice": advice_text,
-                })
-                
-                logger.info(f"[ADVICE] ✅ {symbol}: {advice_text[:50]}...")
-            
-            except Exception as e:
-                logger.error(f"[ADVICE] ❌ Error generating advice for {symbol}: {e}")
+            # Get current price
+            current_price = get_crypto_price(symbol, force_refresh=False)
+            if not current_price or current_price <= 0:
+                logger.warning(f"[ADVICE] Skipping advice for {symbol}: price unavailable")
                 continue
+            
+            buy_price = position.get("buy_price", 0)
+            qty = position.get("qty", 0)
+            
+            if buy_price <= 0 or qty <= 0:
+                logger.warning(f"[ADVICE] Skipping advice for {symbol}: invalid position data")
+                continue
+            
+            # Calculate P&L
+            pnl_pct = ((current_price - buy_price) / buy_price) * 100
+            
+            tasks.append({
+                "symbol": symbol,
+                "current_price": current_price,
+                "buy_price": buy_price,
+                "pnl_pct": pnl_pct,
+            })
         
-        logger.info(f"[ADVICE] ✅ Generated {len(advice_list)}/{len(portfolio)} advice items")
+        # Execute in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_PARALLEL_CALLS) as executor:
+            future_to_task = {
+                executor.submit(
+                    get_quick_position_advice,
+                    perplexity,
+                    task["symbol"],
+                    task["current_price"],
+                    task["buy_price"],
+                    task["pnl_pct"],
+                ): task
+                for task in tasks
+            }
+            
+            for future in concurrent.futures.as_completed(future_to_task, timeout=30):
+                task = future_to_task[future]
+                try:
+                    advice_text = future.result(timeout=5)
+                    
+                    advice_list.append({
+                        "symbol": task["symbol"],
+                        "pnl_pct": task["pnl_pct"],
+                        "current_price": task["current_price"],
+                        "buy_price": task["buy_price"],
+                        "advice": advice_text,
+                    })
+                    
+                    logger.info(f"[ADVICE] ✅ {task['symbol']}: {advice_text[:50]}...")
+                
+                except Exception as e:
+                    logger.error(f"[ADVICE] ❌ Error getting advice for {task['symbol']}: {e}")
+        
+        logger.info(f"[ADVICE] ✅ Generated {len(advice_list)}/{len(tasks)} advice items")
         return advice_list
     
     except Exception as e:
@@ -610,14 +661,13 @@ def get_quick_position_advice(
         import os
         
         prompt = f"""
-Provide a brief 1-sentence trading advice for this {symbol} position:
-- Buy Price: ${buy_price:,.2f}
-- Current Price: ${current_price:,.2f}
+Brief 1-sentence trading advice for {symbol}:
+- Buy: ${buy_price:,.2f}
+- Current: ${current_price:,.2f}
 - P&L: {pnl_pct:+.1f}%
 
-Give ONE short actionable recommendation (HOLD/BUY MORE/TAKE PROFIT) based on current market conditions.
 Format: "[ACTION]: [brief reason]."
-Example: "HOLD: Strong support at $40k, target $50k."
+Example: "HOLD: Strong support at $40k."
 """.strip()
         
         response = requests.post(
@@ -633,7 +683,7 @@ Example: "HOLD: Strong support at $40k, target $50k."
                     {"role": "user", "content": prompt},
                 ],
             },
-            timeout=15,
+            timeout=PERPLEXITY_TIMEOUT,
         )
         response.raise_for_status()
         
