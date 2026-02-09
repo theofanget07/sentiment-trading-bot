@@ -9,11 +9,11 @@ Handles:
 - Subscription status management
 
 Limitations:
-- Free: 5 analyses/day, 3 positions max, 1 crypto with alerts, 3 AI reco/WEEK
+- Free: 3 analyses/day, 3 positions max, 1 crypto with alerts, 3 AI reco/WEEK
 - Premium (9€/month): Unlimited analyses, unlimited positions, unlimited alerts, unlimited AI reco
 
 Author: Theo Fanget
-Date: 09 February 2026 (Updated - 3 reco/week for Free)
+Date: 09 February 2026 (Updated - 3 analyses/day + 3 reco/week for Free)
 """
 import logging
 from typing import Tuple, Optional
@@ -110,7 +110,7 @@ class TierManager:
     # ===== RATE LIMITING FOR FREE USERS =====
     
     def can_analyze(self, user_id: int) -> Tuple[bool, str]:
-        """Check if user can perform sentiment analysis (limit 5/day for free).
+        """Check if user can perform sentiment analysis (limit 3/day for free).
         
         Args:
             user_id: Telegram user ID
@@ -129,7 +129,7 @@ class TierManager:
         if self.is_premium(user_id):
             return True, ""
         
-        # Free users: check daily limit (5 analyses/day)
+        # Free users: check daily limit (3 analyses/day)
         today = datetime.utcnow().strftime("%Y-%m-%d")
         key = f"user:{user_id}:analyze_count:{today}"
         
@@ -138,9 +138,9 @@ class TierManager:
             current = int(count_bytes.decode('utf-8')) if count_bytes else 0
             
             # Check if limit reached
-            if current >= 5:
+            if current >= 3:
                 return False, (
-                    "❌ **Limite atteinte** (5 analyses/jour en Free)\n\n"
+                    "❌ **Limite atteinte** (3 analyses/jour en Free)\n\n"
                     "✨ **Passe Premium** pour analyses illimitées: /subscribe"
                 )
             
@@ -154,7 +154,7 @@ class TierManager:
             self.redis.expireat(key, int(end_of_day.timestamp()))
             
             # Return success with counter info
-            return True, f"📊 Analyse {current + 1}/5 utilisée aujourd'hui (Free)"
+            return True, f"📊 Analyse {current + 1}/3 utilisée aujourd'hui (Free)"
         
         except Exception as e:
             logger.error(f"Error checking analyze limit: {e}")
@@ -340,7 +340,7 @@ class TierManager:
             return {
                 'tier': tier,
                 'analyze_count_today': analyze_count,
-                'analyze_limit': None if tier == 'premium' else 5,
+                'analyze_limit': None if tier == 'premium' else 3,
                 'recommend_count_this_week': recommend_count,
                 'recommend_limit': None if tier == 'premium' else 3,
                 'position_limit': None if tier == 'premium' else 3,
@@ -353,7 +353,7 @@ class TierManager:
             return {
                 'tier': 'free',
                 'analyze_count_today': 0,
-                'analyze_limit': 5,
+                'analyze_limit': 3,
                 'recommend_count_this_week': 0,
                 'recommend_limit': 3,
                 'position_limit': 3,
@@ -408,8 +408,8 @@ if __name__ == "__main__":
     print(f"   Is free: {tier_manager.is_free(test_user_id)}")
     
     # Test analyze limit
-    print(f"\n2. Testing analyze limit (5/day for free)...")
-    for i in range(7):
+    print(f"\n2. Testing analyze limit (3/day for free)...")
+    for i in range(5):
         can, msg = tier_manager.can_analyze(test_user_id)
         print(f"   Attempt {i+1}: {'✅ Allowed' if can else '❌ Blocked'}")
         if msg:
