@@ -119,23 +119,62 @@ Focus on factual analysis and avoid speculation.
         Returns:
             Dict with recommendation, reasoning, confidence
         """
+        # Calculate key metrics
+        pnl_pct = position_data.get('pnl_pct', 0)
+        avg_price = position_data.get('avg_price', 0)
+        current_price = position_data.get('current_price', 0)
+        price_change_from_entry = ((current_price - avg_price) / avg_price * 100) if avg_price > 0 else 0
+        
         prompt = f"""
-Analyze this {crypto_symbol} position and provide a recommendation:
+You are a professional crypto trading advisor providing CONSISTENT recommendations.
+
+Analyze this {crypto_symbol} position:
 
 Position Details:
 - Quantity: {position_data.get('qty', 'N/A')}
-- Average Buy Price: ${position_data.get('avg_price', 'N/A'):,.2f}
-- Current Price: ${position_data.get('current_price', 'N/A'):,.2f}
-- Unrealized P&L: {position_data.get('pnl_pct', 'N/A')}%
+- Average Entry Price: ${avg_price:,.2f}
+- Current Price: ${current_price:,.2f}
+- Price Change from Entry: {price_change_from_entry:+.2f}%
+- Unrealized P&L: {pnl_pct:+.2f}%
 
-Based on current market conditions, news, and technical analysis:
+CRITICAL INSTRUCTIONS FOR CONSISTENCY:
 
-1. Recommendation: BUY/SELL/HOLD
-2. Reasoning: 2-3 key points
-3. Confidence: Score from 0-100
-4. Risk Level: Low/Medium/High
+1. Use these THRESHOLDS for recommendations:
+   - BUY: Only if major bullish catalysts + price is oversold + strong support nearby
+   - SELL: Only if position is in profit (>+15%) AND strong bearish signals OR major breakdown confirmed
+   - HOLD: Default for most situations, especially if:
+     * Position has unrealized profit but no clear exit signal
+     * Market is consolidating or in transition
+     * Sentiment is mixed or unclear
 
-Provide actionable insights for a retail investor.
+2. DO NOT change recommendation for minor price moves (<5% intraday)
+
+3. For PROFITABLE positions (like this one at {pnl_pct:+.1f}%):
+   - Prefer HOLD unless there's a CLEAR reason to sell (breakdown, major bearish event)
+   - SELL only if: Major resistance rejected + bearish divergence + high probability of >10% drop
+   - Avoid flip-flopping between HOLD and SELL based on minor sentiment shifts
+
+4. Base your analysis on:
+   - Key support/resistance levels
+   - Major trend direction (not short-term noise)
+   - Significant news/catalysts (ignore minor headlines)
+   - Risk/reward at current levels
+
+Provide your analysis in this EXACT format:
+
+Recommendation: [BUY/SELL/HOLD]
+
+[2-3 paragraphs explaining your reasoning with specific price levels and catalysts]
+
+Confidence: [0-100]
+Risk Level: [Low/Medium/High]
+
+Actionable Insights for Retail Investors:
+- [Specific action item 1]
+- [Specific action item 2]
+- [Specific action item 3]
+
+Be objective and avoid recency bias from the last hour's price action.
         """
         
         try:
@@ -145,7 +184,10 @@ Provide actionable insights for a retail investor.
                 json={
                     "model": "sonar-pro",
                     "messages": [
-                        {"role": "system", "content": "You are a professional crypto trading advisor."},
+                        {
+                            "role": "system", 
+                            "content": "You are a disciplined crypto trading advisor focused on CONSISTENT, stable recommendations. Avoid flip-flopping based on minor market moves."
+                        },
                         {"role": "user", "content": prompt},
                     ],
                 },
@@ -160,9 +202,18 @@ Provide actionable insights for a retail investor.
             recommendation = self._extract_recommendation(content)
             confidence = self._extract_confidence(content)
             
+            # Validation: For profitable positions, prefer HOLD over SELL unless high confidence
+            if pnl_pct > 15 and recommendation == "SELL" and confidence < 70:
+                logger.warning(
+                    f"Low confidence SELL ({confidence}%) for profitable position (+{pnl_pct:.1f}%). "
+                    f"Overriding to HOLD for stability."
+                )
+                recommendation = "HOLD"
+                confidence = 65
+            
             logger.info(
-                f"Parsed recommendation for {crypto_symbol}: {recommendation} "
-                f"(confidence: {confidence}%)"
+                f"Recommendation for {crypto_symbol}: {recommendation} "
+                f"(confidence: {confidence}%, P&L: {pnl_pct:+.1f}%)"
             )
             
             return {
