@@ -67,6 +67,28 @@ except ImportError:
     STRIPE_WEBHOOK_AVAILABLE = False
     stripe_webhook_router = None
 
+# Free/Premium Tier Management
+try:
+    from backend.tier_manager import tier_manager
+    from backend.decorators import (
+        premium_required,
+        check_rate_limit,
+        check_position_limit,
+        check_alert_limit,
+        check_recommendation_limit
+    )
+    TIER_SYSTEM_AVAILABLE = True
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ Tier management not available")
+    TIER_SYSTEM_AVAILABLE = False
+    # Dummy decorators if tier system not available
+    def premium_required(func): return func
+    def check_rate_limit(func): return func
+    def check_position_limit(func): return func
+    def check_alert_limit(func): return func
+    def check_recommendation_limit(func): return func
+
 load_dotenv()
 
 logging.basicConfig(
@@ -277,6 +299,7 @@ _Back to main menu: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
 
+@check_rate_limit
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = ' '.join(context.args)
     if not user_text or len(user_text) < 10:
@@ -370,6 +393,7 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
 
+@check_position_limit
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline. Cannot add position.", parse_mode='Markdown')
@@ -648,6 +672,7 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ===== PRICE ALERTS COMMANDS WITH TP/SL =====
 
+@check_alert_limit
 async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Set TP/SL price alerts for a crypto."""
     if not DB_AVAILABLE:
@@ -926,6 +951,7 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # ===== AI RECOMMENDATIONS COMMAND (FEATURE 4) =====
 
+@check_recommendation_limit
 async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Wrapper for AI recommendations handler."""
     await recommend_handler_fn(
@@ -1330,6 +1356,14 @@ async def setup_application():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Initialize tier_manager and portfolio_manager in bot_data for decorators
+    if TIER_SYSTEM_AVAILABLE:
+        application.bot_data['tier_manager'] = tier_manager
+        application.bot_data['portfolio_manager'] = portfolio_manager
+        logger.info("✅ Tier manager initialized in bot_data")
+    else:
+        logger.warning("⚠️ Tier manager not initialized - all features free")
+    
     # Add all command handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -1394,6 +1428,12 @@ async def startup():
         logger.info("✅ Stripe integration enabled")
     else:
         logger.warning("⚠️ Stripe integration disabled")
+    
+    # Log Tier System status
+    if TIER_SYSTEM_AVAILABLE:
+        logger.info("✅ Tier management system enabled (Free/Premium limits active)")
+    else:
+        logger.warning("⚠️ Tier management system disabled (all features unlimited)")
     
     await setup_application()
     logger.info("✅ Server ready")
