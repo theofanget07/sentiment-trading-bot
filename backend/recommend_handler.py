@@ -5,10 +5,31 @@ Handles /recommend command for personalized trading advice.
 """
 
 import logging
+import re
 from telegram import Update
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+
+
+def clean_perplexity_citations(text: str) -> str:
+    """
+    Remove citation numbers like [1], [2], [1][2], etc. from Perplexity AI response.
+    Also cleans up extra spaces and improves formatting.
+    """
+    # Remove citations like [1], [2], [1][2][3], etc.
+    cleaned = re.sub(r'\[\d+\]', '', text)
+    
+    # Remove multiple consecutive spaces
+    cleaned = re.sub(r' +', ' ', cleaned)
+    
+    # Clean up spaces before punctuation
+    cleaned = re.sub(r' +([.,;:!?])', r'\1', cleaned)
+    
+    # Remove trailing spaces from lines
+    cleaned = '\n'.join(line.rstrip() for line in cleaned.split('\n'))
+    
+    return cleaned.strip()
 
 
 async def recommend_command(
@@ -148,9 +169,13 @@ async def recommend_command(
             )
             return
         
+        # Send recommendations with cleaned formatting
         for rec in all_recommendations:
             emoji_map = {"BUY": "🟢", "SELL": "🔴", "HOLD": "🟡"}
             rec_emoji = emoji_map.get(rec["recommendation"], "⚪")
+            
+            # Clean citations from AI reasoning
+            cleaned_reasoning = clean_perplexity_citations(rec["reasoning"])
             
             response = f"{rec_emoji} **AI RECOMMENDATION - {rec['symbol']}**\n"
             response += f"\n━━━━━━━━━━━━━━━━━━\n"
@@ -164,7 +189,7 @@ async def recommend_command(
             response += f"🎯 **RECOMMENDATION: {rec['recommendation']}**\n"
             response += f"🔒 Confidence: **{rec['confidence']}%**\n"
             response += f"━━━━━━━━━━━━━━━━━━\n\n"
-            response += f"📊 **AI Analysis:**\n\n{rec['reasoning']}\n"
+            response += f"📊 **AI Analysis:**\n\n{cleaned_reasoning}\n"
             response += f"\n⚠️ **DISCLAIMER**\n"
             response += f"This AI recommendation is for **informational purposes ONLY** and does **NOT** constitute financial advice.\n\n"
             response += f"• Cryptocurrency trading involves **substantial risk of loss**\n"
