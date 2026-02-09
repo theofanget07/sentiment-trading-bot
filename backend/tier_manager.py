@@ -9,15 +9,15 @@ Handles:
 - Subscription status management
 
 Limitations:
-- Free: 5 analyses/day, 3 positions max, 1 crypto with alerts, 3 AI reco/day
+- Free: 5 analyses/day, 3 positions max, 1 crypto with alerts, 3 AI reco/WEEK
 - Premium (9€/month): Unlimited analyses, unlimited positions, unlimited alerts, unlimited AI reco
 
 Author: Theo Fanget
-Date: 08 February 2026 (Updated)
+Date: 09 February 2026 (Updated - 3 reco/week for Free)
 """
 import logging
 from typing import Tuple, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from backend.redis_storage import redis_client
 from backend.stripe_service import get_subscription_status
 
@@ -73,6 +73,39 @@ class TierManager:
         """
         tier = self.get_user_tier(user_id)
         return tier in ['free', 'cancelled']
+    
+    # ===== HELPER: WEEK CALCULATION =====
+    
+    def _get_week_key(self) -> str:
+        """Get current week identifier (resets every Monday at 00:00 UTC).
+        
+        Returns:
+            Week key in format 'YYYY-WW' (e.g., '2026-06')
+        
+        Examples:
+            >>> _get_week_key()
+            '2026-06'  # Week 6 of 2026
+        """
+        now = datetime.utcnow()
+        # ISO week: Monday = start of week
+        year, week_num, _ = now.isocalendar()
+        return f"{year}-W{week_num:02d}"
+    
+    def _get_next_monday_midnight_utc(self) -> datetime:
+        """Get next Monday at 00:00 UTC for expiration.
+        
+        Returns:
+            datetime object of next Monday midnight UTC
+        """
+        now = datetime.utcnow()
+        # Days until next Monday (0 = Monday, 6 = Sunday)
+        days_ahead = 7 - now.weekday()  # If today is Monday, this gives 7 (next Monday)
+        if days_ahead == 0:
+            days_ahead = 7  # If today is Monday, next Monday is in 7 days
+        
+        next_monday = now + timedelta(days=days_ahead)
+        next_monday_midnight = next_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+        return next_monday_midnight
     
     # ===== RATE LIMITING FOR FREE USERS =====
     
@@ -202,7 +235,7 @@ class TierManager:
         return True, "🎁 Alerte gratuite (1/1 en Free) - Passe Premium pour alertes illimitées !"
     
     def can_access_ai_recommendations(self, user_id: int) -> Tuple[bool, str]:
-        """Check if user can access AI recommendations (3/day for free, unlimited for premium).
+        """Check if user can access AI recommendations (3/WEEK for free, unlimited for premium).
         
         Args:
             user_id: Telegram user ID
@@ -221,9 +254,9 @@ class TierManager:
         if self.is_premium(user_id):
             return True, ""
         
-        # Free users: check daily limit (3 recommendations/day)
-        today = datetime.utcnow().strftime("%Y-%m-%d")
-        key = f"user:{user_id}:recommend_count:{today}"
+        # Free users: check WEEKLY limit (3 recommendations/week, resets Monday 00:00 UTC)
+        week_key = self._get_week_key()
+        key = f"user:{user_id}:recommend_count:{week_key}"
         
         try:
             count_bytes = self.redis.get(key)
@@ -231,12 +264,19 @@ class TierManager:
             
             # Check if limit reached
             if current >= 3:
+                # Calculate when reset happens (next Monday)
+                next_monday = self._get_next_monday_midnight_utc()
+                days_until_reset = (next_monday - datetime.utcnow()).days
+                
+                reset_msg = "demain" if days_until_reset == 0 else f"dans {days_until_reset} jour{'s' if days_until_reset > 1 else ''}"
+                
                 return False, (
-                    "🆓 **Limite Free atteinte** (3 recommandations/jour)\n\n"
-                    "🤖 Tu as utilisé tes 3 recommandations AI aujourd'hui.\n\n"
-                    "🎁 **Version Free** : 3 recommandations/jour pour tester\n"
+                    "🆓 **Limite Free atteinte** (3 recommandations/semaine)\n\n"
+                    f"🤖 Tu as utilisé tes 3 recommandations AI cette semaine.\n"
+                    f"🔄 Reset: **{reset_msg}** (lundi 00h00 UTC)\n\n"
+                    "🎁 **Version Free** : 3 recommandations/semaine pour tester\n"
                     "✨ **Passe Premium (9€/mois)** pour :\n"
-                    "• AI Recommendations illimitées\n"
+                    "• AI Recommendations illimitées 24/7\n"
                     "• Morning Briefing quotidien avec analyse\n"
                     "• Trade of the Day exclusif\n"
                     "• Alertes prix TP/SL illimitées\n"
@@ -248,14 +288,12 @@ class TierManager:
             # Increment counter
             self.redis.incr(key)
             
-            # Set expiration at end of day (midnight UTC)
-            end_of_day = datetime.utcnow().replace(
-                hour=23, minute=59, second=59, microsecond=999999
-            )
-            self.redis.expireat(key, int(end_of_day.timestamp()))
+            # Set expiration at next Monday midnight UTC
+            next_monday_midnight = self._get_next_monday_midnight_utc()
+            self.redis.expireat(key, int(next_monday_midnight.timestamp()))
             
             # Return success with counter info
-            return True, f"🤖 Recommandation {current + 1}/3 utilisée aujourd'hui (Free)"
+            return True, f"🤖 Recommandation {current + 1}/3 utilisée cette semaine (Free)"
         
         except Exception as e:
             logger.error(f"Error checking AI recommendation limit: {e}")
@@ -285,8 +323,10 @@ class TierManager:
             Dict with usage stats
         """
         today = datetime.utcnow().strftime("%Y-%m-%d")
+        week_key = self._get_week_key()
+        
         analyze_key = f"user:{user_id}:analyze_count:{today}"
-        recommend_key = f"user:{user_id}:recommend_count:{today}"
+        recommend_key = f"user:{user_id}:recommend_count:{week_key}"
         
         try:
             analyze_count_bytes = self.redis.get(analyze_key)
@@ -301,7 +341,7 @@ class TierManager:
                 'tier': tier,
                 'analyze_count_today': analyze_count,
                 'analyze_limit': None if tier == 'premium' else 5,
-                'recommend_count_today': recommend_count,
+                'recommend_count_this_week': recommend_count,
                 'recommend_limit': None if tier == 'premium' else 3,
                 'position_limit': None if tier == 'premium' else 3,
                 'alert_limit': None if tier == 'premium' else 1,
@@ -314,7 +354,7 @@ class TierManager:
                 'tier': 'free',
                 'analyze_count_today': 0,
                 'analyze_limit': 5,
-                'recommend_count_today': 0,
+                'recommend_count_this_week': 0,
                 'recommend_limit': 3,
                 'position_limit': 3,
                 'alert_limit': 1,
@@ -387,8 +427,8 @@ if __name__ == "__main__":
         can, msg = tier_manager.can_set_alert(test_user_id, alert_count)
         print(f"   Current alerts: {alert_count} -> {'✅ Can set' if can else '❌ Limit reached'}")
     
-    # Test AI recommendations (3/day for free)
-    print(f"\n5. Testing AI recommendations (3/day for free)...")
+    # Test AI recommendations (3/WEEK for free)
+    print(f"\n5. Testing AI recommendations (3/WEEK for free)...")
     for i in range(5):
         can, msg = tier_manager.can_access_ai_recommendations(test_user_id)
         print(f"   Attempt {i+1}: {'✅ Allowed' if can else '❌ Blocked'}")
@@ -400,6 +440,14 @@ if __name__ == "__main__":
     stats = tier_manager.get_usage_stats(test_user_id)
     for key, value in stats.items():
         print(f"   {key}: {value}")
+    
+    # Test week key calculation
+    print(f"\n7. Week calculation:")
+    print(f"   Current week: {tier_manager._get_week_key()}")
+    next_monday = tier_manager._get_next_monday_midnight_utc()
+    print(f"   Next Monday reset: {next_monday.strftime('%Y-%m-%d %H:%M UTC')}")
+    days_until = (next_monday - datetime.utcnow()).days
+    print(f"   Days until reset: {days_until}")
     
     print("\n" + "="*60)
     print("TEST COMPLETE")
