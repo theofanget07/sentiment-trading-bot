@@ -1087,7 +1087,7 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_text += (
             "To cancel or update your subscription, "
             "please contact support at:\n"
-            "📧 cryptosentinel.contact@gmail.com\n\n"
+            "📧 contact.sentinellabs@gmail.com\n\n"
             "_We'll add a self-service portal soon!_"
         )
         
@@ -1129,7 +1129,7 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "gdpr_info": {
                 "right": "GDPR Article 15 - Right to Access",
                 "controller": "CryptoSentinel AI, Switzerland",
-                "contact": "cryptosentinel.contact@gmail.com"
+                "contact": "contact.sentinellabs@gmail.com"
             }
         }
         
