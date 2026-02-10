@@ -15,94 +15,181 @@
             <div class="last-update">Last update: <span id="lastUpdate">Loading...</span></div>
         </header>
 
-        <!-- Overview Cards -->
-        <section class="metrics-grid">
-            <div class="metric-card">
-                <div class="metric-icon">👥</div>
-                <div class="metric-content">
-                    <div class="metric-label">Total Users</div>
-                    <div class="metric-value" id="totalUsers">-</div>
-                    <div class="metric-sub" id="premiumUsers">- Premium</div>
-                </div>
-            </div>
+        <!-- Tab Navigation -->
+        <nav class="tab-nav">
+            <button class="tab-btn active" data-tab="analytics">📊 Analytics</button>
+            <button class="tab-btn" data-tab="admin">⚙️ Admin</button>
+        </nav>
 
-            <div class="metric-card">
-                <div class="metric-icon">💰</div>
-                <div class="metric-content">
-                    <div class="metric-label">MRR</div>
-                    <div class="metric-value" id="mrr">-</div>
-                    <div class="metric-sub" id="conversionRate">- Conversion Rate</div>
+        <!-- Analytics Tab Content -->
+        <div id="analyticsTab" class="tab-content active">
+            <!-- Overview Cards -->
+            <section class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-icon">👥</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Total Users</div>
+                        <div class="metric-value" id="totalUsers">-</div>
+                        <div class="metric-sub" id="premiumUsers">- Premium</div>
+                    </div>
                 </div>
-            </div>
 
-            <div class="metric-card">
-                <div class="metric-icon">📈</div>
-                <div class="metric-content">
-                    <div class="metric-label">DAU</div>
-                    <div class="metric-value" id="dau">-</div>
-                    <div class="metric-sub" id="wau">- WAU</div>
+                <div class="metric-card">
+                    <div class="metric-icon">💰</div>
+                    <div class="metric-content">
+                        <div class="metric-label">MRR</div>
+                        <div class="metric-value" id="mrr">-</div>
+                        <div class="metric-sub" id="conversionRate">- Conversion Rate</div>
+                    </div>
                 </div>
-            </div>
 
-            <div class="metric-card">
-                <div class="metric-icon">💻</div>
-                <div class="metric-content">
-                    <div class="metric-label">Commands Today</div>
-                    <div class="metric-value" id="commandsToday">-</div>
-                    <div class="metric-sub" id="errorRate">- Error Rate</div>
+                <div class="metric-card">
+                    <div class="metric-icon">📈</div>
+                    <div class="metric-content">
+                        <div class="metric-label">DAU</div>
+                        <div class="metric-value" id="dau">-</div>
+                        <div class="metric-sub" id="wau">- WAU</div>
+                    </div>
                 </div>
-            </div>
-        </section>
 
-        <!-- Charts Section -->
-        <section class="charts-section">
-            <div class="chart-container">
-                <h2>User Growth (Last 7 Days)</h2>
-                <canvas id="userGrowthChart"></canvas>
-            </div>
-
-            <div class="chart-container">
-                <h2>Revenue Metrics</h2>
-                <canvas id="revenueChart"></canvas>
-            </div>
-        </section>
-
-        <!-- Detailed Metrics -->
-        <section class="details-section">
-            <div class="detail-card">
-                <h3>💸 Cost Analysis</h3>
-                <div class="detail-row">
-                    <span>API Costs (Today):</span>
-                    <span id="apiCostsToday" class="detail-value">-</span>
+                <div class="metric-card">
+                    <div class="metric-icon">💻</div>
+                    <div class="metric-content">
+                        <div class="metric-label">Commands Today</div>
+                        <div class="metric-value" id="commandsToday">-</div>
+                        <div class="metric-sub" id="errorRate">- Error Rate</div>
+                    </div>
                 </div>
-                <div class="detail-row">
-                    <span>Total Costs (Week):</span>
-                    <span id="totalCostsWeek" class="detail-value">-</span>
-                </div>
-                <div class="detail-row">
-                    <span>Cost Per User:</span>
-                    <span id="costPerUser" class="detail-value">-</span>
-                </div>
-            </div>
+            </section>
 
-            <div class="detail-card">
-                <h3>⚠️ Active Alerts</h3>
-                <div id="alertsList" class="alerts-container">
-                    <p class="loading">Loading alerts...</p>
+            <!-- Charts Section -->
+            <section class="charts-section">
+                <div class="chart-container">
+                    <h2>User Growth (Last 7 Days)</h2>
+                    <canvas id="userGrowthChart"></canvas>
                 </div>
-            </div>
-        </section>
 
-        <!-- Health Status -->
-        <section class="health-section">
-            <div id="healthStatus" class="health-card">
-                <div class="health-indicator"></div>
-                <span>System Status: <strong id="healthText">Checking...</strong></span>
-            </div>
-        </section>
+                <div class="chart-container">
+                    <h2>Revenue Metrics</h2>
+                    <canvas id="revenueChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Detailed Metrics -->
+            <section class="details-section">
+                <div class="detail-card">
+                    <h3>💸 Cost Analysis</h3>
+                    <div class="detail-row">
+                        <span>API Costs (Today):</span>
+                        <span id="apiCostsToday" class="detail-value">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span>Total Costs (Week):</span>
+                        <span id="totalCostsWeek" class="detail-value">-</span>
+                    </div>
+                    <div class="detail-row">
+                        <span>Cost Per User:</span>
+                        <span id="costPerUser" class="detail-value">-</span>
+                    </div>
+                </div>
+
+                <div class="detail-card">
+                    <h3>⚠️ Active Alerts</h3>
+                    <div id="alertsList" class="alerts-container">
+                        <p class="loading">Loading alerts...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Health Status -->
+            <section class="health-section">
+                <div id="healthStatus" class="health-card">
+                    <div class="health-indicator"></div>
+                    <span>System Status: <strong id="healthText">Checking...</strong></span>
+                </div>
+            </section>
+        </div>
+
+        <!-- Admin Tab Content -->
+        <div id="adminTab" class="tab-content">
+            <!-- Admin Auth -->
+            <section id="adminAuth" class="admin-auth">
+                <div class="auth-card">
+                    <h2>🔐 Admin Authentication</h2>
+                    <p>Enter your admin token to access user management:</p>
+                    <input type="password" id="adminTokenInput" placeholder="Admin token..." />
+                    <button id="adminLoginBtn" class="btn-primary">Unlock Admin Panel</button>
+                    <p id="authError" class="error-msg"></p>
+                </div>
+            </section>
+
+            <!-- Admin Panel (hidden until authenticated) -->
+            <section id="adminPanel" class="admin-panel" style="display: none;">
+                <!-- Admin Stats -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-icon">👥</div>
+                        <div class="metric-content">
+                            <div class="metric-label">Total Users</div>
+                            <div class="metric-value" id="adminTotalUsers">-</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon">💎</div>
+                        <div class="metric-content">
+                            <div class="metric-label">Premium Users</div>
+                            <div class="metric-value" id="adminPremiumUsers">-</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon">🆓</div>
+                        <div class="metric-content">
+                            <div class="metric-label">Free Users</div>
+                            <div class="metric-value" id="adminFreeUsers">-</div>
+                        </div>
+                    </div>
+
+                    <div class="metric-card">
+                        <div class="metric-icon">💰</div>
+                        <div class="metric-content">
+                            <div class="metric-label">MRR</div>
+                            <div class="metric-value" id="adminMRR">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Bar -->
+                <div class="search-container">
+                    <input type="text" id="userSearch" placeholder="🔍 Search by User ID or username..." />
+                    <button id="refreshUsersBtn" class="btn-secondary">🔄 Refresh</button>
+                </div>
+
+                <!-- Users Table -->
+                <div class="users-table-container">
+                    <table class="users-table">
+                        <thead>
+                            <tr>
+                                <th>User ID</th>
+                                <th>Username</th>
+                                <th>Status</th>
+                                <th>Stripe Sub</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usersTableBody">
+                            <tr>
+                                <td colspan="5" class="loading">Loading users...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
 
         <footer>
-            <p>CryptoSentinel AI © 2026 - Phase 1.5 Analytics System</p>
+            <p>CryptoSentinel AI © 2026 - Phase 1.5 Analytics + Admin System</p>
             <p><a href="/analytics/report/daily" target="_blank">View Daily Report</a> | <a href="/analytics/report/weekly" target="_blank">View Weekly Report</a></p>
         </footer>
     </div>
