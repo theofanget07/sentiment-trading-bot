@@ -34,6 +34,18 @@ except Exception as e:
     raise
 
 
+def get_redis_client():
+    """Get the global Redis client instance for external modules.
+    
+    This function is used by analytics and other modules that need
+    direct access to the Redis client.
+    
+    Returns:
+        redis.Redis: The Redis client instance
+    """
+    return redis_client
+
+
 # ===== CLASS-BASED INTERFACE (for Celery tasks) =====
 
 class RedisStorage:
