@@ -1,363 +1,247 @@
-# 🤖 CryptoSentinel AI
+# 🔍 CryptoSentinel AI
 
-> AI-powered crypto sentinel & portfolio tracker powered by Perplexity AI
-> 
-> **Week 3 Complete** - Advanced Portfolio Features + Price Alerts + AI Recommendations ✨
+<div align="center">
 
-## 📌 Overview
+**AI-Powered Crypto Trading Assistant for Telegram**
 
-Telegram bot that analyzes crypto sentiment using Perplexity AI. Now with **advanced portfolio tracking**, **TP/SL price alerts**, **AI recommendations**, and **daily insights**!
+*Automated portfolio tracking · Smart price alerts · AI-driven recommendations*
 
-**Telegram:** [@SentinelAI_CryptoBot](https://t.me/SentinelAI_CryptoBot)
+[![Telegram Bot](https://img.shields.io/badge/Telegram-%40SentinelAI__CryptoBot-blue?logo=telegram)](https://t.me/SentinelAI_CryptoBot)
+[![Python](https://img.shields.io/badge/Python-3.11-3776AB?logo=python)](https://www.python.org/)
+[![Railway](https://img.shields.io/badge/Deployed%20on-Railway-0B0D0E?logo=railway)](https://railway.app/)
+[![License](https://img.shields.io/badge/License-Private-red)](LICENSE)
 
----
+[Features](#-features) • [Quick Start](#-quick-start) • [Documentation](./docs/) • [Roadmap](#-roadmap)
 
-## 🚀 Features
-
-### ✅ Implemented (Week 1-3)
-
-- **Sentiment Analysis** - Analyze crypto news with Perplexity AI
-  - Returns: BULLISH 🚀 | BEARISH 📉 | NEUTRAL ➡️
-  - Confidence score (0-100%)
-  - Reasoning + Key points
-  - Additional sources
-
-- **URL Scraping** 🔥
-  - Auto-detect URLs in messages
-  - Extract article text automatically
-  - Support for 7+ crypto news sites:
-    - CoinDesk
-    - CoinTelegraph
-    - Bitcoin.com
-    - Decrypt
-    - The Block
-    - CryptoSlate
-    - CryptoNews
-    - Generic fallback for other sites
-
-- **Advanced Portfolio Tracking** 💼
-  - View holdings with `/portfolio`
-  - Add positions: `/add BTC 0.5 45000`
-  - **Partial sells**: `/sell BTC 0.5 75000` ⚡
-  - **Partial remove**: `/remove BTC 0.3`
-  - Full remove: `/remove BTC`
-  - **Enriched summary**: `/summary` (realized + unrealized P&L)
-  - Transaction history: `/history`
-  - Redis storage (ultra-fast)
-
-- **Price Alerts (TP/SL)** 🔔 NEW!
-  - Set Take Profit: `/setalert BTC tp 80000`
-  - Set Stop Loss: `/setalert BTC sl 70000`
-  - View alerts: `/listalerts`
-  - Remove alerts: `/removealert BTC`
-  - Automated monitoring every 15 minutes
-  - Real-time notifications via Celery workers
-
-- **AI Recommendations** 🤖 NEW!
-  - Personalized trading advice: `/recommend`
-  - Portfolio-aware suggestions
-  - Risk assessment
-  - Entry/exit strategies
-
-- **Daily Insights** 📈 NEW!
-  - Automated 8:00 AM CET notifications
-  - Market sentiment analysis
-  - Portfolio performance review
-  - Bonus Trade of the Day
-
-- **Smart Auto-Analysis**
-  - Detects URLs and scrapes automatically
-  - Auto-analyzes long text messages (>30 chars)
-  - Manual analysis with `/analyze` command
-
-- **Railway Deployment** 🚂
-  - Running 24/7 on Railway.app
-  - Webhook mode for instant responses
-  - Automatic redeploys on GitHub push
-  - Celery workers for background tasks
-
-### ⏳ Coming Soon (Week 4+)
-
-- 💳 Premium tier (€9/month)
-- 📊 Analytics dashboard
-- 📧 Email notifications
-- 🎯 Advanced trading signals
+</div>
 
 ---
 
-## 💬 Usage Examples
+## 🎯 What is CryptoSentinel AI?
 
-### 1. Analyze Text
+A **professional-grade Telegram bot** that helps crypto traders make smarter decisions with:
+
+✅ **Real-time portfolio tracking** - Monitor 15+ cryptocurrencies with live P&L
+✅ **Intelligent price alerts** - Set Take Profit & Stop Loss with 15-min monitoring
+✅ **AI-powered insights** - Personalized trading advice from Perplexity AI
+✅ **Automated daily briefings** - Market analysis delivered every morning at 8 AM
+✅ **Sentiment analysis** - Analyze crypto news articles instantly
+
+**Built for:** Active crypto traders who want automation without complexity.
+
+---
+
+## ✨ Features
+
+### 💼 Advanced Portfolio Management
+
+- Track unlimited positions across 15+ cryptocurrencies
+- Real-time profit/loss calculation (realized + unrealized)
+- Average cost basis tracking with DCA support
+- Partial buy/sell operations
+- Complete transaction history
+- Portfolio diversification metrics
 
 ```
-/analyze Bitcoin hits new ATH as institutions buy
-```
-
-### 2. Analyze URL
-
-```
-https://www.coindesk.com/markets/bitcoin-rally
-```
-
-Or:
-
-```
-Check this out! https://cointelegraph.com/news/eth-upgrade
-```
-
-### 3. Portfolio Management
-
-```
-/add BTC 1 45000          # Add 1 BTC @ $45k
-/portfolio                # View holdings
-/sell BTC 0.5 75000       # Sell 0.5 BTC @ $75k (records P&L)
-/remove ETH 2             # Remove 2 ETH
+/add BTC 0.5 45000        # Add position
+/portfolio                # View all holdings
+/sell BTC 0.2 75000       # Take profit (tracks P&L)
 /summary                  # Global analytics
-/history                  # Last 5 transactions
 ```
 
-### 4. Price Alerts
+### 🔔 Smart Price Alerts
+
+- Set Take Profit and Stop Loss levels
+- Automated monitoring every 15 minutes
+- Instant Telegram notifications when triggered
+- Multi-crypto alert management
 
 ```
 /setalert BTC tp 80000    # Take Profit at $80k
 /setalert BTC sl 70000    # Stop Loss at $70k
 /listalerts               # View active alerts
-/removealert BTC          # Delete all BTC alerts
 ```
 
-### 5. AI Recommendations
+### 🤖 AI-Powered Recommendations
+
+- Personalized trading advice based on your portfolio
+- Risk assessment and entry/exit strategies
+- Powered by Perplexity AI's latest models
+- Context-aware suggestions
 
 ```
-/recommend                # Get personalized trading advice
+/recommend                # Get AI trading advice
 ```
 
-### 6. Auto-Analysis
+### 🌅 Daily Morning Briefing
 
-Just send any long text (>30 chars):
+**Automated at 8:00 AM CET every day:**
+
+- Portfolio performance summary
+- Market sentiment analysis
+- AI recommendations for your holdings
+- **Bonus Trade of the Day** - Curated opportunity
+- Top crypto news highlights
+
+### 📈 Sentiment Analysis
+
+- Analyze crypto news articles with AI
+- Returns: BULLISH 🚀 | BEARISH 📉 | NEUTRAL ➡️
+- Confidence scores + reasoning
+- Automatic URL detection and scraping
 
 ```
-Ethereum upgrade successful, gas fees drop 50% overnight
+/analyze Bitcoin ETF approval news is bullish
+# Or just paste a URL:
+https://coindesk.com/markets/bitcoin-rally
 ```
+
+### 📊 Analytics & Metrics *(Coming Soon)*
+
+- Performance dashboard
+- Historical P&L charts
+- Win/loss ratio tracking
+- Best/worst performers
 
 ---
 
-## 🛠 Tech Stack
+## 🚀 Quick Start
 
-- **Language:** Python 3.11
-- **Bot Framework:** python-telegram-bot 20.7
-- **AI:** Perplexity API (sonar model)
-- **Scraping:** BeautifulSoup4 + requests
-- **Storage:** Redis (Railway)
-- **Web Framework:** FastAPI (webhook mode)
-- **Task Queue:** Celery + Redis
-- **Deployment:** Railway.app
-- **Version Control:** Git + GitHub
+### For Users
 
-### Dependencies
+1. **Open Telegram** and search for [@SentinelAI_CryptoBot](https://t.me/SentinelAI_CryptoBot)
+2. Click **Start** and send `/help`
+3. Add your first position: `/add BTC 0.1 45000`
+4. Set a price alert: `/setalert BTC tp 50000`
+5. Get AI advice: `/recommend`
 
-```bash
-python-telegram-bot==20.7
-anthropic==0.18.1
-python-dotenv==1.0.1
-fastapi==0.109.2
-uvicorn[standard]==0.27.1
-sqlalchemy==2.0.27
-celery==5.3.6
-requests==2.31.0
-beautifulsoup4==4.12.3
-redis==5.0.1
-```
+**That's it!** Your crypto assistant is ready.
+
+### For Developers
+
+See [Developer Setup Guide](./docs/deployment/RAILWAY_SETUP.md) for installation instructions.
 
 ---
 
-## 📂 Project Structure
+## 💻 Tech Stack
 
-```
-sentiment-trading-bot/
-├── backend/
-│   ├── bot_webhook.py           # Main Telegram bot (webhook mode)
-│   ├── sentiment_analyzer.py    # Perplexity AI integration
-│   ├── article_scraper.py       # URL scraping module
-│   ├── portfolio_manager.py     # Portfolio logic
-│   ├── redis_storage.py         # Redis storage layer
-│   ├── crypto_prices.py         # CoinGecko API
-│   ├── celery_worker.py         # Background tasks (alerts, insights)
-│   ├── recommend_handler.py     # AI recommendations
-│   └── requirements.txt         # Python dependencies
-├── Dockerfile                   # Railway deployment config
-├── .env.example                 # Environment variables template
-└── README.md                    # This file
-```
+| Component | Technology |
+|-----------|------------|
+| **Language** | Python 3.11 |
+| **Bot Framework** | python-telegram-bot 20.7 |
+| **AI Engine** | Perplexity AI (sonar model) |
+| **Storage** | Redis (Railway) |
+| **Web Framework** | FastAPI |
+| **Task Queue** | Celery + Redis |
+| **Deployment** | Railway.app |
+| **Price Data** | CoinGecko API |
 
 ---
 
-## 🚀 Getting Started
+## 📚 Documentation
 
-### Prerequisites
+**Complete documentation available in [/docs](./docs/)**
 
-- Python 3.11+
-- Telegram account
-- Perplexity API key
-- Redis instance (Railway provides one)
-- Git
-
-### Installation
-
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/theofanget07/sentiment-trading-bot.git
-cd sentiment-trading-bot
-```
-
-2. **Create virtual environment**
-
-```bash
-python -m venv venv
-source venv/bin/activate  # Mac/Linux
-# OR
-venv\Scripts\activate     # Windows
-```
-
-3. **Install dependencies**
-
-```bash
-pip install -r backend/requirements.txt
-```
-
-4. **Setup environment variables**
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add:
-
-```
-TELEGRAM_BOT_TOKEN=your_bot_token_from_BotFather
-PERPLEXITY_API_KEY=your_perplexity_api_key
-REDIS_URL=redis://localhost:6379
-WEBHOOK_URL=https://your-railway-url.up.railway.app
-```
-
-5. **Run the bot**
-
-```bash
-cd backend
-python bot_webhook.py
-```
+- 📌 [Features Guides](./docs/features/) - Detailed feature documentation
+- 🚀 [Deployment](./docs/deployment/) - Setup & infrastructure
+- 📊 [Progress Reports](./docs/reports/) - Development tracking
 
 ---
 
-## 🧪 Testing
+## 🛣 Roadmap
 
-### Test Article Scraper
+### ✅ Phase 1 - Core Features (Complete)
 
-```bash
-cd backend
-python test_article_scraper.py
-```
+- [x] Telegram bot foundation
+- [x] Perplexity AI integration
+- [x] Portfolio tracking with Redis
+- [x] Price alerts (TP/SL)
+- [x] AI recommendations
+- [x] Daily morning briefing
+- [x] Railway deployment (24/7 uptime)
 
-### Test in Telegram
+### 🔄 Phase 1.4 - Monetization (In Progress)
 
-1. Start bot: `python bot_webhook.py`
-2. Open [@SentinelAI_CryptoBot](https://t.me/SentinelAI_CryptoBot)
-3. Try:
-   - `/start`
-   - `/help`
-   - `/add BTC 0.01 45000`
-   - `/portfolio`
-   - `/setalert BTC tp 50000`
-   - `/listalerts`
-   - `/recommend`
-   - `/summary`
-   - `/history`
+- [ ] Stripe payment integration
+- [ ] Free/Premium tier system (€9/month)
+- [ ] Feature gating
+- [ ] Customer portal
+- [ ] Email notifications
 
----
+### 📅 Phase 2 - Advanced Trading (Planned)
 
-## 📊 Portfolio Manager Details
+- [ ] Trading signals dashboard
+- [ ] Backtesting engine
+- [ ] Multi-exchange support
+- [ ] Advanced analytics
 
-### Features
-
-- **Redis-based** - Ultra-fast storage (<100ms latency)
-- **User isolation** - Separate data per user ID
-- **Atomic operations** - Thread-safe reads/writes
-- **Scalable** - Ready for 1000+ users
-- **Realized P&L tracking** - Record profits from sells
-
-### Data Structure
-
-```json
-user:123456789:profile -> {"user_id": 123456789, "username": "@trader"}
-user:123456789:positions:BTC -> {"quantity": 0.5, "avg_price": 45000}
-user:123456789:transactions -> [{"action": "BUY", "quantity": 1, ...}]
-user:123456789:realized_pnl -> [{"symbol": "BTC", "pnl_realized": 15000, ...}]
-user:123456789:alerts:BTC -> {"tp": 80000, "sl": 70000}
-```
+**Target**: €5,000/month MRR by Month 6
 
 ---
 
-## 🎯 Roadmap
+## 📊 Current Status
 
-### Week 1-2 (Complete) - MVP Foundation ✅
+**Phase**: 1.5 - Analytics & Monitoring ✅  
+**Next Milestone**: Launch Premium tier (Week 4)  
+**Target**: 80+ paying users @ €9/month = **€720 MRR**
 
-- ✅ Bot setup + Perplexity integration
-- ✅ URL scraping + multi-site support
-- ✅ Railway deployment (24/7)
-- ✅ Redis storage
-- ✅ Basic portfolio tracking
-
-### Week 3 (Complete) - Advanced Features ✅
-
-- ✅ Partial sells with P&L tracking
-- ✅ Enriched summary (realized + unrealized P&L)
-- ✅ Real-time P&L alerts (TP/SL)
-- ✅ AI recommendations engine
-- ✅ Daily automated insights (8AM CET)
-- ✅ Bonus Trade of the Day
-
-### Week 4-8 - Monetization
-
-- Stripe integration
-- Premium tier (€9/month)
-- Free/Premium feature gating
-- Email notifications
-- Analytics dashboard
-- Launch to 80+ paying users
-
-### Target: Week 8
-
-- **€870/month MRR**
-- **80+ paying users**
-- **15% monthly churn max**
+| Metric | Current | Target (Week 8) |
+|--------|---------|----------------|
+| Active Users | 10 | 150+ |
+| Premium Users | 0 | 80+ |
+| MRR | €0 | €720+ |
+| Uptime | 99.8% | 99.5%+ |
 
 ---
 
-## 📈 Progress
+## 👥 Who Uses CryptoSentinel AI?
 
-**Current Status:** Week 3 Complete - Phase 1.3 100% ✅
+**Perfect for:**
 
-| Milestone | Status | Date |
-|-----------|--------|------|
-| Bot setup | ✅ Complete | Jan 27, 2026 |
-| Sentiment analysis | ✅ Complete | Jan 27, 2026 |
-| URL scraping | ✅ Complete | Jan 28, 2026 |
-| Railway deploy | ✅ Complete | Jan 30, 2026 |
-| Portfolio tracking | ✅ Complete | Feb 1, 2026 |
-| Redis migration | ✅ Complete | Feb 3, 2026 |
-| Partial sells + P&L | ✅ Complete | Feb 4, 2026 |
-| Enriched summary | ✅ Complete | Feb 4, 2026 |
-| Price alerts (TP/SL) | ✅ Complete | Feb 4, 2026 |
-| AI recommendations | ✅ Complete | Feb 4, 2026 |
-| Daily insights | ✅ Complete | Feb 5, 2026 |
-| Bot rebranding | ✅ Complete | Feb 5, 2026 |
-| Monetization | ⏳ In progress | Week 4+ |
+✅ Active crypto traders tracking multiple positions  
+✅ DCA investors wanting automated cost basis calculation  
+✅ Busy professionals who need automated alerts  
+✅ Traders seeking AI-powered market insights  
+✅ Anyone wanting a "set and forget" crypto assistant  
 
 ---
 
-## 🤝 Contributing
+## 🛡 Security & Privacy
 
-This is a personal project for now. Contributions will be open once Phase 1 is complete (Week 8).
+- **No login required** - Works directly in Telegram
+- **No exchange API keys** - Manual position tracking only
+- **Encrypted storage** - Redis with encryption at rest
+- **GDPR compliant** - See [Privacy Policy](./PRIVACY_POLICY.md)
+- **Open development** - Transparent progress tracking
+
+---
+
+## 👨‍💻 Author
+
+**Theo Fanget**
+- 💼 Project Manager @ Groupe E Celsius (Heating Utilities)
+- 📍 Based in Lausanne, Switzerland
+- 🎯 Building a €5k+/month SaaS in 6 months
+- 🏃 Sports enthusiast (running, rugby, calisthenics)
+
+---
+
+## 🔗 Links
+
+- **Telegram Bot**: [@SentinelAI_CryptoBot](https://t.me/SentinelAI_CryptoBot)
+- **Documentation**: [/docs](./docs/)
+- **GitHub**: [theofanget07/sentiment-trading-bot](https://github.com/theofanget07/sentiment-trading-bot)
+- **Support**: contact.sentinellabs@gmail.com
+
+---
+
+## ⭐ Show Your Support
+
+If you find CryptoSentinel AI useful:
+
+1. ⭐ Star this repository
+2. 📣 Share with fellow crypto traders
+3. 💬 Join our Telegram community
 
 ---
 
@@ -365,110 +249,14 @@ This is a personal project for now. Contributions will be open once Phase 1 is c
 
 Private project - All rights reserved.
 
----
-
-## 👨‍💻 Author
-
-**Theo Fanget**
-- Role: Project Manager @ Groupe E Celsius
-- Location: Lausanne, Switzerland
-- Project: Building €5k+/month SaaS in 6 months
+For collaboration or licensing inquiries: contact.sentinellabs@gmail.com
 
 ---
 
-## 📧 Support
+<div align="center">
 
-For issues or questions:
-1. Check Railway logs for deployment issues
-2. Review bot logs (`python bot_webhook.py`)
-3. Test locally before pushing to GitHub
+**Built with ❤️ and lots of ☕ in Lausanne, Switzerland**
 
----
+*Last Updated: February 10, 2026*
 
-## 🔗 Links
-
-- **Telegram Bot:** [@SentinelAI_CryptoBot](https://t.me/SentinelAI_CryptoBot)
-- **GitHub Repo:** [theofanget07/sentiment-trading-bot](https://github.com/theofanget07/sentiment-trading-bot)
-- **Railway App:** [Dashboard](https://railway.app/dashboard)
-
----
-
-## 📊 Latest Updates
-
-### February 5, 2026 - Bot Rebranding 🎯
-
-**CryptoSentinel AI Launch!**
-
-- ✅ **Rebranded to @SentinelAI_CryptoBot**
-  - Professional username
-  - Updated BotFather settings
-  - New About/Description
-  - Ready for Phase 1.4 monetization
-
-**Phase 1.3 Complete - All Features Shipped:**
-- ✅ Price Alerts (TP/SL)
-- ✅ AI Recommendations (/recommend)
-- ✅ Daily Insights (8AM CET)
-- ✅ Bonus Trade of the Day
-
-**Next:** Phase 1.4 - Stripe Integration + Premium Tier (€9/month)
-
----
-
-### February 4, 2026 - Week 3 Day 1 🔥
-
-**Features 1, 3, 4, 5 Shipped!**
-
-- ✅ **Feature 1: Price Alerts (TP/SL)**
-  - `/setalert BTC tp 80000` - Set Take Profit
-  - `/setalert BTC sl 70000` - Set Stop Loss
-  - Celery workers monitoring prices every 15 min
-  - Real-time notifications
-
-- ✅ **Feature 3: Partial Sells & Realized P&L**
-  - `/sell BTC 0.5 75000` - Sell position and track P&L
-  - `/remove BTC 0.3` - Partial removal support
-  - Redis storage for realized P&L history
-  - Smart position management (keeps avg price)
-
-- ✅ **Feature 4: AI Recommendations**
-  - `/recommend` - Personalized trading advice
-  - Portfolio-aware analysis
-  - Risk-adjusted suggestions
-
-- ✅ **Feature 5: Daily Insights**
-  - Automated 8AM CET notifications
-  - Market sentiment + portfolio review
-  - Bonus Trade of the Day
-
-- ✅ **Feature 2: Enriched Summary**
-  - `/summary` now shows:
-    - Unrealized P&L (current positions)
-    - Realized P&L (from sells)
-    - Total P&L (combined)
-    - Best/worst performers
-    - Diversification score
-  - Enhanced `/history` with P&L on sells
-
----
-
-### February 3, 2026 - Day 6 ✅
-
-- ✅ Redis migration complete
-- ✅ Portfolio tracking fully functional
-- ✅ 15 cryptos supported (CoinGecko API)
-- ✅ `/add`, `/remove`, `/portfolio`, `/summary`, `/history` working
-
----
-
-### February 1, 2026 - Day 4 🔥
-
-- ✅ Fixed portfolio_manager import for Railway
-- ✅ Corrected module path (backend.portfolio_manager)
-- ✅ Added try/except fallback for local dev
-- ✅ Triggered redeploy with updated code
-- ✅ Portfolio tracking now fully functional
-
----
-
-**Built with ❤️ and lots of ☕ in Lausanne**
+</div>
