@@ -89,6 +89,26 @@ except ImportError:
     def check_alert_limit(func): return func
     def check_recommendation_limit(func): return func
 
+# Analytics System (Phase 1.5)
+try:
+    from backend.analytics_integration import (
+        init_analytics,
+        track_command,
+        track_registration,
+        track_conversion
+    )
+    from backend.routes.analytics import router as analytics_router
+    ANALYTICS_AVAILABLE = True
+except ImportError:
+    logger = logging.getLogger(__name__)
+    logger.warning("⚠️ Analytics system not available")
+    ANALYTICS_AVAILABLE = False
+    def init_analytics(): return False
+    def track_command(*args, **kwargs): pass
+    def track_registration(*args, **kwargs): pass
+    def track_conversion(*args, **kwargs): pass
+    analytics_router = None
+
 load_dotenv()
 
 logging.basicConfig(
@@ -110,6 +130,13 @@ if STRIPE_WEBHOOK_AVAILABLE and stripe_webhook_router:
     logger.info("✅ Stripe webhook router registered at /webhook/stripe")
 else:
     logger.warning("⚠️ Stripe webhook router NOT registered - payments won't be processed")
+
+# Include Analytics Router (Phase 1.5)
+if ANALYTICS_AVAILABLE and analytics_router:
+    app.include_router(analytics_router)
+    logger.info("✅ Analytics router registered at /analytics")
+else:
+    logger.warning("⚠️ Analytics router NOT registered")
 
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -182,8 +209,14 @@ BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 _Type `/help` for detailed guide with Free limits_
 """
     await update.message.reply_text(welcome_text, parse_mode='Markdown', disable_web_page_preview=True)
+    
+    # Track registration (Phase 1.5 Analytics)
+    if ANALYTICS_AVAILABLE:
+        track_registration(user.id, user.username)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    
     help_text = """📚 **Complete User Guide**
 
 🆓 **FREE vs 💎 PREMIUM**
@@ -291,7 +324,7 @@ _FREE: 3/week (resets Monday) | Premium: Unlimited_
 [Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)
 
 ──────────────────
-📊 **SUPPORTED CRYPTOS**
+📈 **SUPPORTED CRYPTOS**
 
 BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM
 
@@ -309,10 +342,16 @@ This bot provides informational services ONLY.
 _Back to main menu: `/start`_
 """
     await update.message.reply_text(help_text, parse_mode='Markdown', disable_web_page_preview=True)
+    
+    # Track help command (Phase 1.5 Analytics)
+    if ANALYTICS_AVAILABLE:
+        track_command('help', user_id, success=True)
 
 @check_rate_limit
 async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
     user_text = ' '.join(context.args)
+    
     if not user_text or len(user_text) < 10:
         await update.message.reply_text(
             "⚠️ Please provide text to analyze.\n\n"
@@ -321,16 +360,34 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/analyze Ethereum merge completes successfully`",
             parse_mode='Markdown'
         )
+        # Track failed command
+        if ANALYTICS_AVAILABLE:
+            track_command('analyze', user_id, success=False, error='missing_text')
         return
     
-    urls = extract_urls(user_text)
-    if urls:
-        await analyze_url(update, urls[0])
-    else:
-        await analyze_text(update, user_text)
+    try:
+        urls = extract_urls(user_text)
+        if urls:
+            await analyze_url(update, urls[0])
+        else:
+            await analyze_text(update, user_text)
+        
+        # Track successful analyze
+        if ANALYTICS_AVAILABLE:
+            track_command('analyze', user_id, success=True)
+    
+    except Exception as e:
+        logger.error(f"❌ /analyze error: {e}")
+        # Track failed command
+        if ANALYTICS_AVAILABLE:
+            track_command('analyze', user_id, success=False, error=str(e))
+        raise
 
 async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Display user's crypto portfolio holdings with current prices."""
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name or "User"
+    
     if not DB_AVAILABLE:
         await update.message.reply_text(
             "⚠️ **Database Unavailable**\n\n"
@@ -339,15 +396,13 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "You can still use `/analyze` for sentiment!",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('portfolio', user_id, success=False, error='db_offline')
         return
-
-    user_id = update.effective_user.id
-    username = update.effective_user.username or update.effective_user.first_name or "User"
     
     logger.info(f"💼 /portfolio called by user {user_id} (@{username})")
     
     try:
-        # Get portfolio with current prices
         portfolio = portfolio_manager.get_portfolio_with_prices(user_id, username)
         
         if not portfolio["positions"]:
@@ -370,10 +425,8 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 pnl_usd = pos["pnl_usd"]
                 pnl_percent = pos["pnl_percent"]
                 
-                # Choose emoji based on P&L
                 pnl_emoji = "🟢" if pnl_percent > 0 else ("🔴" if pnl_percent < 0 else "⚪")
                 
-                # Check if price is available
                 if current_price is None or current_price == 0:
                     price_display = "n/a (price feed error)"
                     pnl_display = "n/a"
@@ -394,6 +447,10 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /portfolio response sent to {user_id}")
         
+        # Track successful portfolio command
+        if ANALYTICS_AVAILABLE:
+            track_command('portfolio', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /portfolio error: {e}")
         import traceback
@@ -403,18 +460,22 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "❌ **Error**\n\nSomething went wrong with the database. Please try again.",
             parse_mode='Markdown'
         )
+        
+        # Track failed command
+        if ANALYTICS_AVAILABLE:
+            track_command('portfolio', user_id, success=False, error=str(e))
 
 @check_position_limit
 async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline. Cannot add position.", parse_mode='Markdown')
-        return
-
-    """Add a crypto position to portfolio."""
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
     
-    # Validate arguments
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline. Cannot add position.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=False, error='db_offline')
+        return
+    
     if len(context.args) != 3:
         await update.message.reply_text(
             "⚠️ **Usage:** `/add <symbol> <quantity> <price>`\n\n"
@@ -423,6 +484,8 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/add ETH 10 2500` - Buy 10 ETH at $2,500",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -432,10 +495,14 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Quantity and price must be numbers.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=False, error='invalid_numbers')
         return
     
     if quantity <= 0 or price <= 0:
         await update.message.reply_text("❌ Values must be positive.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=False, error='negative_values')
         return
     
     try:
@@ -458,17 +525,27 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /add {symbol} for user {user_id}")
         
+        # Track successful add
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /add error: {e}")
         await update.message.reply_text(f"❌ Error adding position. Is {symbol} supported?", parse_mode='Markdown')
+        
+        # Track failed add
+        if ANALYTICS_AVAILABLE:
+            track_command('add', user_id, success=False, error=str(e))
 
 async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove position (full or partial)."""
+    user_id = update.effective_user.id
+    
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('remove', user_id, success=False, error='db_offline')
         return
-
-    user_id = update.effective_user.id
     
     if len(context.args) < 1 or len(context.args) > 2:
         await update.message.reply_text(
@@ -478,20 +555,25 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/remove BTC 0.5` - Remove only 0.5 BTC",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('remove', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
     quantity = None
     
-    # Parse optional quantity
     if len(context.args) == 2:
         try:
             quantity = float(context.args[1])
             if quantity <= 0:
                 await update.message.reply_text("❌ Quantity must be positive.", parse_mode='Markdown')
+                if ANALYTICS_AVAILABLE:
+                    track_command('remove', user_id, success=False, error='negative_quantity')
                 return
         except ValueError:
             await update.message.reply_text("❌ Quantity must be a number.", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('remove', user_id, success=False, error='invalid_quantity')
             return
     
     try:
@@ -500,6 +582,8 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not result["success"]:
             error_msg = result.get("error", "Unknown error")
             await update.message.reply_text(f"⚠️ {error_msg}", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('remove', user_id, success=False, error=error_msg)
             return
         
         if result["action"] == "full_remove":
@@ -515,17 +599,27 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /remove {symbol} for user {user_id}")
         
+        # Track successful remove
+        if ANALYTICS_AVAILABLE:
+            track_command('remove', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /remove error: {e}")
         await update.message.reply_text("❌ Error removing position.", parse_mode='Markdown')
+        
+        # Track failed remove
+        if ANALYTICS_AVAILABLE:
+            track_command('remove', user_id, success=False, error=str(e))
 
 async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Sell position and record realized P&L."""
+    user_id = update.effective_user.id
+    
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=False, error='db_offline')
         return
-
-    user_id = update.effective_user.id
     
     if len(context.args) != 3:
         await update.message.reply_text(
@@ -536,6 +630,8 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 Automatically records realized P&L for tracking",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -545,10 +641,14 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sell_price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Quantity and price must be numbers.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=False, error='invalid_numbers')
         return
     
     if quantity <= 0 or sell_price <= 0:
         await update.message.reply_text("❌ Values must be positive.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=False, error='negative_values')
         return
     
     try:
@@ -557,6 +657,8 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not result["success"]:
             error_msg = result.get("error", "Unknown error")
             await update.message.reply_text(f"⚠️ {error_msg}", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('sell', user_id, success=False, error=error_msg)
             return
         
         pnl = result["pnl_realized"]
@@ -577,20 +679,30 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /sell {symbol} for user {user_id}: P&L {pnl:+.2f}")
         
+        # Track successful sell
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /sell error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error executing sale.", parse_mode='Markdown')
+        
+        # Track failed sell
+        if ANALYTICS_AVAILABLE:
+            track_command('sell', user_id, success=False, error=str(e))
 
 async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show enriched portfolio summary with realized/unrealized P&L."""
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
-        return
-
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "User"
+    
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('summary', user_id, success=False, error='db_offline')
+        return
     
     try:
         summary = portfolio_manager.get_enriched_summary(user_id, username)
@@ -600,6 +712,8 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "📊 **Portfolio Empty**\n\nUse `/add BTC 0.5 45000` to start tracking!",
                 parse_mode='Markdown'
             )
+            if ANALYTICS_AVAILABLE:
+                track_command('summary', user_id, success=True)
             return
         
         total_pnl = summary["total_pnl"]
@@ -617,14 +731,12 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         response += f"  • Current value: `{format_price(summary['total_current_value'])}`\n"
         response += f"  • Active positions: `{summary['num_positions']}`\n"
         
-        # Best/worst performers
         if summary["best_performer"]:
             best = summary["best_performer"]
             worst = summary["worst_performer"]
             response += f"\n🏆 **Best performer:** `{best['symbol']}` ({best['pnl_percent']:+.2f}%)\n"
             response += f"📉 **Worst performer:** `{worst['symbol']}` ({worst['pnl_percent']:+.2f}%)\n"
         
-        # Diversification
         div_score = summary["diversification_score"]
         div_emoji = "🟢" if div_score >= 80 else ("🟡" if div_score >= 50 else "🔴")
         response += f"\n{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)\n"
@@ -634,23 +746,36 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /summary sent to {user_id}")
         
+        # Track successful summary
+        if ANALYTICS_AVAILABLE:
+            track_command('summary', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /summary error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error generating summary.", parse_mode='Markdown')
+        
+        # Track failed summary
+        if ANALYTICS_AVAILABLE:
+            track_command('summary', user_id, success=False, error=str(e))
 
 async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Show last 5 transactions with enhanced formatting."""
+    user_id = update.effective_user.id
+    
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('history', user_id, success=False, error='db_offline')
         return
         
-    user_id = update.effective_user.id
     try:
         transactions = portfolio_manager.get_transactions(user_id, limit=5)
         if not transactions:
             await update.message.reply_text("📃 No transactions yet.\n\nUse `/add BTC 0.5 45000` to get started!", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('history', user_id, success=True)
             return
         
         response = "📃 **Transaction History**\n"
@@ -667,7 +792,6 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response += f"\n**{i}.** {action_emoji} {tx['action']} `{tx['symbol']}`\n"
             response += f"   Qty: `{tx['quantity']:.8g}` @ `{format_price(tx['price'])}`"
             
-            # Show P&L for sells
             if 'pnl' in tx and tx['pnl'] is not None:
                 pnl_emoji = "🟢" if tx['pnl'] > 0 else "🔴"
                 response += f"\n   {pnl_emoji} P&L: `{tx['pnl']:+,.2f} USD`"
@@ -675,24 +799,33 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /history sent to {user_id}")
         
+        # Track successful history
+        if ANALYTICS_AVAILABLE:
+            track_command('history', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /history error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error loading history.", parse_mode='Markdown')
+        
+        # Track failed history
+        if ANALYTICS_AVAILABLE:
+            track_command('history', user_id, success=False, error=str(e))
 
 # ===== PRICE ALERTS COMMANDS WITH TP/SL =====
 
 @check_alert_limit
 async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Set TP/SL price alerts for a crypto."""
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline. Cannot set alert.", parse_mode='Markdown')
-        return
-    
     user_id = update.effective_user.id
     
-    # Validate arguments: /setalert BTC tp 80000 OR /setalert BTC sl 70000
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline. Cannot set alert.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='db_offline')
+        return
+    
     if len(context.args) != 3:
         await update.message.reply_text(
             "⚠️ **Usage:** `/setalert <symbol> <tp|sl> <price>`\n\n"
@@ -703,12 +836,13 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 **You can set BOTH TP and SL independently**",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
     alert_type = context.args[1].lower()
     
-    # Validate alert type
     if alert_type not in ['tp', 'sl']:
         await update.message.reply_text(
             "❌ **Invalid alert type**\n\n"
@@ -716,28 +850,34 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Example:** `/setalert BTC tp 80000`",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='invalid_alert_type')
         return
     
     try:
         price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Price must be a number.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='invalid_price')
         return
     
     if price <= 0:
         await update.message.reply_text("❌ Price must be positive.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='negative_price')
         return
     
-    # Check if symbol supported
     if not is_symbol_supported(symbol):
         await update.message.reply_text(
             f"❌ **{symbol} not supported**\n\n"
             "Supported cryptos: BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='unsupported_symbol')
         return
     
-    # Fetch current price
     current_price = get_crypto_price(symbol)
     
     if current_price is None:
@@ -748,9 +888,10 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 **Please try again in a few minutes.**",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='price_unavailable')
         return
     
-    # VALIDATION: Check price coherence with current price
     if alert_type == 'tp' and price <= current_price:
         await update.message.reply_text(
             f"⚠️ **Invalid TP**\n\n"
@@ -760,6 +901,8 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 Set a higher price for TP (e.g., `{format_price(current_price * 1.1)}`)",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='invalid_tp_price')
         return
     
     if alert_type == 'sl' and price >= current_price:
@@ -771,15 +914,15 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💡 Set a lower price for SL (e.g., `{format_price(current_price * 0.9)}`)",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error='invalid_sl_price')
         return
     
-    # Optional: Check if user has position (warning only, not blocking)
     position = redis_storage.get_position(user_id, symbol)
     warning_msg = ""
     if not position and alert_type == 'sl':
         warning_msg = "\n⚠️ _You don't hold this asset in your portfolio_\n"
     
-    # Check if alert already exists
     existing_alert = redis_storage.get_alert(user_id, symbol)
     if existing_alert:
         if alert_type == 'tp' and existing_alert.get('tp'):
@@ -789,6 +932,8 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"To modify, use: `/removealert {symbol}` first, then set new alert.",
                 parse_mode='Markdown'
             )
+            if ANALYTICS_AVAILABLE:
+                track_command('setalert', user_id, success=False, error='tp_exists')
             return
         
         if alert_type == 'sl' and existing_alert.get('sl'):
@@ -798,9 +943,10 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"To modify, use: `/removealert {symbol}` first, then set new alert.",
                 parse_mode='Markdown'
             )
+            if ANALYTICS_AVAILABLE:
+                track_command('setalert', user_id, success=False, error='sl_exists')
             return
     
-    # Set alert in Redis
     try:
         tp_value = price if alert_type == 'tp' else None
         sl_value = price if alert_type == 'sl' else None
@@ -810,7 +956,6 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if result["success"]:
             alert = result["alert"]
             
-            # Build response
             response = f"✅ **Alert Set!**\n\n"
             response += f"**{symbol}**\n"
             
@@ -829,22 +974,34 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             await update.message.reply_text(response, parse_mode='Markdown')
             logger.info(f"✅ Alert set: User {user_id} - {symbol} {alert_type.upper()} @ {price}")
+            
+            # Track successful setalert
+            if ANALYTICS_AVAILABLE:
+                track_command('setalert', user_id, success=True)
         else:
             await update.message.reply_text(f"❌ {result['message']}", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('setalert', user_id, success=False, error=result['message'])
     
     except Exception as e:
         logger.error(f"❌ /setalert error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error setting alert.", parse_mode='Markdown')
+        
+        # Track failed setalert
+        if ANALYTICS_AVAILABLE:
+            track_command('setalert', user_id, success=False, error=str(e))
 
 async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List all active TP/SL price alerts."""
+    user_id = update.effective_user.id
+    
     if not DB_AVAILABLE:
         await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('listalerts', user_id, success=False, error='db_offline')
         return
-    
-    user_id = update.effective_user.id
     
     try:
         alerts = redis_storage.get_alerts(user_id)
@@ -896,22 +1053,31 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /listalerts sent to {user_id}")
+        
+        # Track successful listalerts
+        if ANALYTICS_AVAILABLE:
+            track_command('listalerts', user_id, success=True)
     
     except Exception as e:
         logger.error(f"❌ /listalerts error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error loading alerts.", parse_mode='Markdown')
+        
+        # Track failed listalerts
+        if ANALYTICS_AVAILABLE:
+            track_command('listalerts', user_id, success=False, error=str(e))
 
 async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Remove all price alerts (TP and SL) for a crypto."""
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
-        return
-    
     user_id = update.effective_user.id
     
-    # Validate arguments
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('removealert', user_id, success=False, error='db_offline')
+        return
+    
     if len(context.args) != 1:
         await update.message.reply_text(
             "⚠️ **Usage:** `/removealert <symbol>`\n\n"
@@ -919,12 +1085,13 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "This will remove BOTH TP and SL alerts for the crypto.",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('removealert', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
     
     try:
-        # Check if alert exists
         alert = redis_storage.get_alert(user_id, symbol)
         
         if not alert:
@@ -933,9 +1100,10 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
                 f"Use `/listalerts` to see your active alerts.",
                 parse_mode='Markdown'
             )
+            if ANALYTICS_AVAILABLE:
+                track_command('removealert', user_id, success=False, error='alert_not_found')
             return
         
-        # Remove alert
         success = redis_storage.remove_alert(user_id, symbol)
         
         if success:
@@ -951,48 +1119,74 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             
             await update.message.reply_text(response, parse_mode='Markdown')
             logger.info(f"✅ Alert removed: User {user_id} - {symbol}")
+            
+            # Track successful removealert
+            if ANALYTICS_AVAILABLE:
+                track_command('removealert', user_id, success=True)
         else:
             await update.message.reply_text("❌ Error removing alert. Please try again.", parse_mode='Markdown')
+            if ANALYTICS_AVAILABLE:
+                track_command('removealert', user_id, success=False, error='removal_failed')
     
     except Exception as e:
         logger.error(f"❌ /removealert error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error removing alert.", parse_mode='Markdown')
+        
+        # Track failed removealert
+        if ANALYTICS_AVAILABLE:
+            track_command('removealert', user_id, success=False, error=str(e))
 
 # ===== AI RECOMMENDATIONS COMMAND (FEATURE 4) =====
 
 @check_recommendation_limit
 async def recommend_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Wrapper for AI recommendations handler."""
-    await recommend_handler_fn(
-        update, 
-        context, 
-        DB_AVAILABLE, 
-        portfolio_manager, 
-        is_symbol_supported, 
-        format_price
-    )
+    user_id = update.effective_user.id
+    
+    try:
+        await recommend_handler_fn(
+            update, 
+            context, 
+            DB_AVAILABLE, 
+            portfolio_manager, 
+            is_symbol_supported, 
+            format_price
+        )
+        
+        # Track successful recommend
+        if ANALYTICS_AVAILABLE:
+            track_command('recommend', user_id, success=True)
+    
+    except Exception as e:
+        logger.error(f"❌ /recommend error: {e}")
+        
+        # Track failed recommend
+        if ANALYTICS_AVAILABLE:
+            track_command('recommend', user_id, success=False, error=str(e))
+        raise
 
 # ===== STRIPE PREMIUM SUBSCRIPTION COMMANDS =====
 
 async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for /subscribe - Create Stripe checkout session."""
+    user_id = update.effective_chat.id
+    username = update.effective_user.username
+    
     if not STRIPE_AVAILABLE:
         await update.message.reply_text(
             "⚠️ **Premium subscriptions temporarily unavailable**\n\n"
             "Please try again later or contact support.",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('subscribe', user_id, success=False, error='stripe_unavailable')
         return
     
-    chat_id = update.effective_chat.id
-    username = update.effective_user.username
+    logger.info(f"💳 /subscribe called by user {user_id} (@{username})")
     
-    logger.info(f"💳 /subscribe called by user {chat_id} (@{username})")
-    
-    # Check if user is already premium
-    status = get_subscription_status(chat_id)
+    status = get_subscription_status(user_id)
     
     if status == 'premium':
         await update.message.reply_text(
@@ -1000,16 +1194,16 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Use `/manage` to manage your subscription.",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('subscribe', user_id, success=False, error='already_premium')
         return
     
-    # Create Stripe Checkout session
     result = create_checkout_session(
-        user_id=chat_id,
+        user_id=user_id,
         username=username
     )
     
     if result['success']:
-        # Create inline button with payment link
         keyboard = [[
             InlineKeyboardButton(
                 "🔥 Subscribe Now - €9/month",
@@ -1032,7 +1226,11 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode='Markdown'
         )
         
-        logger.info(f"✅ Checkout session created for user {chat_id}: {result['session_id']}")
+        logger.info(f"✅ Checkout session created for user {user_id}: {result['session_id']}")
+        
+        # Track successful subscribe click
+        if ANALYTICS_AVAILABLE:
+            track_command('subscribe', user_id, success=True)
     
     else:
         logger.error(f"❌ Failed to create checkout session: {result['error']}")
@@ -1043,20 +1241,26 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"Error: {result['error']}",
             parse_mode='Markdown'
         )
+        
+        # Track failed subscribe
+        if ANALYTICS_AVAILABLE:
+            track_command('subscribe', user_id, success=False, error=result['error'])
 
 async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for /manage - Manage existing subscription."""
+    user_id = update.effective_chat.id
+    
     if not STRIPE_AVAILABLE:
         await update.message.reply_text(
             "⚠️ **Subscription management temporarily unavailable**\n\n"
             "Please try again later or contact support.",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('manage', user_id, success=False, error='stripe_unavailable')
         return
     
-    chat_id = update.effective_chat.id
-    
-    status = get_subscription_status(chat_id)
+    status = get_subscription_status(user_id)
     
     if status != 'premium':
         await update.message.reply_text(
@@ -1064,10 +1268,11 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Use `/subscribe` to upgrade to Premium!",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('manage', user_id, success=False, error='not_premium')
         return
     
-    # Retrieve subscription details
-    sub_result = retrieve_subscription(chat_id)
+    sub_result = retrieve_subscription(user_id)
     
     if sub_result['success']:
         sub = sub_result['subscription']
@@ -1092,33 +1297,41 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         
         await update.message.reply_text(message_text, parse_mode='Markdown')
+        
+        # Track successful manage
+        if ANALYTICS_AVAILABLE:
+            track_command('manage', user_id, success=True)
     else:
         await update.message.reply_text(
             "❌ **Could not retrieve subscription details**\n\n"
             "Please contact support for assistance.",
             parse_mode='Markdown'
         )
+        
+        # Track failed manage
+        if ANALYTICS_AVAILABLE:
+            track_command('manage', user_id, success=False, error=sub_result.get('error', 'unknown'))
 
 # ===== GDPR DATA COMMANDS =====
 
 async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Export user data (GDPR Right to Access - Art. 15)."""
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
-        return
-    
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name or "User"
     
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('mydata', user_id, success=False, error='db_offline')
+        return
+    
     try:
-        # Collect all user data
         profile = redis_storage.get_user_profile(user_id) or {"user_id": user_id, "username": username}
         positions = redis_storage.get_all_positions(user_id)
         alerts = redis_storage.get_alerts(user_id)
         transactions = redis_storage.get_transactions(user_id, limit=100)
         realized_pnl = redis_storage.get_realized_pnl(user_id)
         
-        # Build JSON export
         data_export = {
             "profile": profile,
             "positions": positions,
@@ -1133,10 +1346,7 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             }
         }
         
-        # Format as readable JSON
         json_output = json.dumps(data_export, indent=2, ensure_ascii=False)
-        
-        # Send as file
         json_file = BytesIO(json_output.encode('utf-8'))
         json_file.name = f"cryptosentinel_data_{user_id}.json"
         
@@ -1158,21 +1368,30 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         logger.info(f"✅ /mydata export sent to user {user_id}")
         
+        # Track successful mydata
+        if ANALYTICS_AVAILABLE:
+            track_command('mydata', user_id, success=True)
+        
     except Exception as e:
         logger.error(f"❌ /mydata error: {e}")
         import traceback
         logger.error(traceback.format_exc())
         await update.message.reply_text("❌ Error exporting data.", parse_mode='Markdown')
+        
+        # Track failed mydata
+        if ANALYTICS_AVAILABLE:
+            track_command('mydata', user_id, success=False, error=str(e))
 
 async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Delete all user data (GDPR Right to Erasure - Art. 17)."""
-    if not DB_AVAILABLE:
-        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
-        return
-    
     user_id = update.effective_user.id
     
-    # Confirmation message
+    if not DB_AVAILABLE:
+        await update.message.reply_text("⚠️ Database offline.", parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('deletedata', user_id, success=False, error='db_offline')
+        return
+    
     confirmation_text = (
         "⚠️ **DELETE ALL YOUR DATA?**\n\n"
         "This will PERMANENTLY delete:\n"
@@ -1187,25 +1406,22 @@ async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         "_This is your RIGHT TO ERASURE under GDPR Article 17._"
     )
     
-    # Check if user provided CONFIRM
     if len(context.args) == 0:
         await update.message.reply_text(confirmation_text, parse_mode='Markdown')
+        if ANALYTICS_AVAILABLE:
+            track_command('deletedata', user_id, success=False, error='awaiting_confirmation')
         return
     
     if len(context.args) == 1 and context.args[0].upper() == "CONFIRM":
         try:
-            # Delete all user data
-            # Get all positions to delete
             positions = redis_storage.get_all_positions(user_id)
             for symbol in positions.keys():
                 redis_storage.delete_position(user_id, symbol)
             
-            # Get all alerts to delete
             alerts = redis_storage.get_alerts(user_id)
             for symbol in alerts.keys():
                 redis_storage.remove_alert(user_id, symbol)
             
-            # Delete profile, transactions, realized_pnl
             redis_storage.redis_client.delete(f"user:{user_id}:profile")
             redis_storage.redis_client.delete(f"user:{user_id}:transactions")
             redis_storage.redis_client.delete(f"user:{user_id}:realized_pnl")
@@ -1226,16 +1442,26 @@ async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             await update.message.reply_text(response, parse_mode='Markdown')
             logger.info(f"✅ /deletedata executed for user {user_id} - ALL DATA DELETED")
             
+            # Track successful deletedata
+            if ANALYTICS_AVAILABLE:
+                track_command('deletedata', user_id, success=True)
+            
         except Exception as e:
             logger.error(f"❌ /deletedata error: {e}")
             import traceback
             logger.error(traceback.format_exc())
             await update.message.reply_text("❌ Error deleting data. Please try again.", parse_mode='Markdown')
+            
+            # Track failed deletedata
+            if ANALYTICS_AVAILABLE:
+                track_command('deletedata', user_id, success=False, error=str(e))
     else:
         await update.message.reply_text(
             "⚠️ Invalid confirmation.\n\nUse: `/deletedata CONFIRM`",
             parse_mode='Markdown'
         )
+        if ANALYTICS_AVAILABLE:
+            track_command('deletedata', user_id, success=False, error='invalid_confirmation')
 
 # ===== MESSAGE HANDLERS =====
 
@@ -1305,24 +1531,25 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "Sentiment Trading Bot Running", "db": DB_AVAILABLE, "stripe": STRIPE_AVAILABLE}
+    return {"status": "ok", "message": "Sentiment Trading Bot Running", "db": DB_AVAILABLE, "stripe": STRIPE_AVAILABLE, "analytics": ANALYTICS_AVAILABLE}
 
 @app.get("/health")
 async def health():
-    # Return 200 even if DB is down, to prevent Railway from killing the bot
     return {
         "status": "ok", 
         "db_connected": DB_AVAILABLE,
         "stripe_enabled": STRIPE_AVAILABLE,
+        "analytics_enabled": ANALYTICS_AVAILABLE,
         "features": {
             "sentiment": "online",
             "portfolio": "online" if DB_AVAILABLE else "offline",
             "alerts": "online" if DB_AVAILABLE else "offline",
-            "premium": "online" if STRIPE_AVAILABLE else "offline"
+            "premium": "online" if STRIPE_AVAILABLE else "offline",
+            "analytics": "online" if ANALYTICS_AVAILABLE else "offline"
         }
     }
 
-# LEGAL PAGES ROUTES (Privacy fix - no GitHub username exposed)
+# LEGAL PAGES ROUTES
 @app.get("/terms", response_class=HTMLResponse)
 async def terms_page():
     """Serve Terms of Service page."""
@@ -1344,6 +1571,42 @@ async def privacy_page():
             return f.read()
     except FileNotFoundError:
         return "<h1>Privacy Policy</h1><p>File not found</p>"
+
+# ANALYTICS DASHBOARD ROUTES (Phase 1.5)
+@app.get("/dashboard", response_class=HTMLResponse)
+async def analytics_dashboard():
+    """Serve Analytics Dashboard."""
+    try:
+        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+        dashboard_path = os.path.join(dashboard_dir, 'index.html')
+        with open(dashboard_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return "<h1>Analytics Dashboard</h1><p>Dashboard not found</p>"
+
+@app.get("/dashboard/styles.css")
+async def dashboard_styles():
+    """Serve dashboard CSS."""
+    try:
+        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+        css_path = os.path.join(dashboard_dir, 'styles.css')
+        with open(css_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return Response(content=content, media_type="text/css")
+    except FileNotFoundError:
+        return Response(content="/* CSS not found */", media_type="text/css")
+
+@app.get("/dashboard/dashboard.js")
+async def dashboard_script():
+    """Serve dashboard JavaScript."""
+    try:
+        dashboard_dir = os.path.join(os.path.dirname(__file__), 'dashboard')
+        js_path = os.path.join(dashboard_dir, 'dashboard.js')
+        with open(js_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        return Response(content=content, media_type="application/javascript")
+    except FileNotFoundError:
+        return Response(content="// JS not found", media_type="application/javascript")
 
 @app.post("/webhook")
 async def webhook(request: Request):
@@ -1367,7 +1630,6 @@ async def setup_application():
     
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Initialize tier_manager and portfolio_manager in bot_data for decorators
     if TIER_SYSTEM_AVAILABLE:
         application.bot_data['tier_manager'] = tier_manager
         application.bot_data['portfolio_manager'] = portfolio_manager
@@ -1386,19 +1648,15 @@ async def setup_application():
     application.add_handler(CommandHandler("summary", summary_command))
     application.add_handler(CommandHandler("history", history_command))
     
-    # Price alerts commands with TP/SL
     application.add_handler(CommandHandler("setalert", setalert_command))
     application.add_handler(CommandHandler("listalerts", listalerts_command))
     application.add_handler(CommandHandler("removealert", removealert_command))
     
-    # AI Recommendations (Feature 4)
     application.add_handler(CommandHandler("recommend", recommend_command))
     
-    # Premium Subscription (Stripe)
     application.add_handler(CommandHandler("subscribe", subscribe_command))
     application.add_handler(CommandHandler("manage", manage_command))
     
-    # GDPR Data Commands
     application.add_handler(CommandHandler("mydata", mydata_command))
     application.add_handler(CommandHandler("deletedata", deletedata_command))
     
@@ -1434,17 +1692,25 @@ async def startup():
         logger.warning("⚠️ Bot starting in LIMITED MODE (Sentiment only, no Portfolio/Alerts)")
         DB_AVAILABLE = False
     
-    # Log Stripe status
     if STRIPE_AVAILABLE:
         logger.info("✅ Stripe integration enabled")
     else:
         logger.warning("⚠️ Stripe integration disabled")
     
-    # Log Tier System status
     if TIER_SYSTEM_AVAILABLE:
         logger.info("✅ Tier management system enabled (Free/Premium limits active)")
     else:
         logger.warning("⚠️ Tier management system disabled (all features unlimited)")
+    
+    # Initialize Analytics System (Phase 1.5)
+    if ANALYTICS_AVAILABLE:
+        analytics_init = init_analytics()
+        if analytics_init:
+            logger.info("✅ Analytics system initialized")
+        else:
+            logger.warning("⚠️ Analytics system failed to initialize")
+    else:
+        logger.warning("⚠️ Analytics system not available")
     
     await setup_application()
     logger.info("✅ Server ready")
