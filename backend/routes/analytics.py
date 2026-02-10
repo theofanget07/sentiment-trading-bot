@@ -1,13 +1,14 @@
 """
 Analytics API Routes
-FastAPI endpoints for analytics dashboard
+FastAPI endpoints for analytics dashboard + admin management
 """
 
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Header
 from pydantic import BaseModel
 
 # Import analytics modules
@@ -15,6 +16,7 @@ from backend.analytics.aggregator import MetricsAggregator
 from backend.analytics.reporter import ReportGenerator
 from backend.analytics.alerts import AlertManager
 from backend.redis_storage import get_redis_client
+from backend.tier_manager import tier_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,19 @@ except Exception as e:
     reporter = None
     alert_manager = None
 
+# Admin token from env
+ADMIN_TOKEN = os.getenv('ADMIN_TOKEN')
+
+# ==================== HELPER FUNCTIONS ====================
+
+def verify_admin_token(token: Optional[str] = None) -> bool:
+    """Verify admin token for protected endpoints."""
+    if not ADMIN_TOKEN:
+        logger.warning("⚠️ ADMIN_TOKEN not configured")
+        return False
+    if not token:
+        return False
+    return token == ADMIN_TOKEN
 
 # ==================== RESPONSE MODELS ====================
 
@@ -54,7 +69,7 @@ class MetricResponse(BaseModel):
     timestamp: str
 
 
-# ==================== ENDPOINTS ====================
+# ==================== ANALYTICS ENDPOINTS ====================
 
 @router.get("/", response_model=Dict[str, str])
 async def analytics_root():
@@ -73,7 +88,9 @@ async def analytics_root():
             "/analytics/costs",
             "/analytics/alerts",
             "/analytics/report/daily",
-            "/analytics/report/weekly"
+            "/analytics/report/weekly",
+            "/analytics/admin/users (protected)",
+            "/analytics/admin/user/{user_id}/toggle (protected)"
         ]
     }
 
@@ -361,3 +378,133 @@ async def health_check():
         "service": "analytics",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+
+# ==================== ADMIN ENDPOINTS ====================
+
+@router.get("/admin/users", response_model=Dict[str, Any])
+async def get_admin_users(
+    token: str = Query(..., description="Admin authentication token"),
+    search: Optional[str] = Query(None, description="Search by user_id or username")
+):
+    """
+    Get all users with admin management capabilities (PROTECTED).
+    
+    Args:
+        token: Admin token for authentication
+        search: Optional search filter
+    
+    Returns:
+        List of users with subscription status
+    """
+    # Verify admin token
+    if not verify_admin_token(token):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid admin token")
+    
+    try:
+        # Get all user profiles
+        all_user_ids = redis_client.smembers("users:all")
+        users_data = []
+        
+        for user_id_bytes in all_user_ids:
+            user_id = int(user_id_bytes.decode('utf-8'))
+            
+            # Get user profile
+            profile = redis_client.hgetall(f"user:{user_id}:profile")
+            
+            if not profile:
+                continue
+            
+            username = profile.get(b'username', b'Unknown').decode('utf-8')
+            
+            # Apply search filter if provided
+            if search:
+                if search not in str(user_id) and search.lower() not in username.lower():
+                    continue
+            
+            # Get subscription status
+            is_premium = tier_manager.is_premium(user_id)
+            
+            # Check if has Stripe subscription
+            stripe_sub_id = redis_client.get(f"subscription:telegram:{user_id}")
+            has_stripe = stripe_sub_id is not None
+            
+            users_data.append({
+                "user_id": user_id,
+                "username": username,
+                "is_premium": is_premium,
+                "has_stripe_subscription": has_stripe,
+                "stripe_subscription_id": stripe_sub_id.decode('utf-8') if has_stripe else None
+            })
+        
+        # Sort: Premium first, then by user_id
+        users_data.sort(key=lambda x: (-x['is_premium'], x['user_id']))
+        
+        # Calculate stats
+        total_users = len(users_data)
+        premium_count = sum(1 for u in users_data if u['is_premium'])
+        free_count = total_users - premium_count
+        mrr = premium_count * 9.0
+        
+        return {
+            "total_users": total_users,
+            "premium_users": premium_count,
+            "free_users": free_count,
+            "mrr_eur": round(mrr, 2),
+            "users": users_data
+        }
+    
+    except Exception as e:
+        logger.error(f"Error getting admin users: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/admin/user/{user_id}/toggle", response_model=Dict[str, Any])
+async def toggle_user_premium(
+    user_id: int,
+    token: str = Query(..., description="Admin authentication token")
+):
+    """
+    Toggle user between Premium and Free tiers (PROTECTED).
+    
+    Args:
+        user_id: Telegram user ID
+        token: Admin token for authentication
+    
+    Returns:
+        Updated user status
+    """
+    # Verify admin token
+    if not verify_admin_token(token):
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid admin token")
+    
+    try:
+        # Get current status
+        current_status = tier_manager.is_premium(user_id)
+        
+        if current_status:
+            # Set to Free
+            tier_manager.set_tier(user_id, 'free')
+            new_status = 'free'
+        else:
+            # Set to Premium
+            tier_manager.set_tier(user_id, 'premium')
+            new_status = 'premium'
+        
+        logger.info(f"✅ Admin toggled user {user_id}: {current_status} → {new_status}")
+        
+        return {
+            "success": True,
+            "user_id": user_id,
+            "previous_status": "premium" if current_status else "free",
+            "new_status": new_status,
+            "message": f"User {user_id} is now {new_status.upper()}"
+        }
+    
+    except Exception as e:
+        logger.error(f"Error toggling user premium: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
