@@ -118,6 +118,15 @@ except ImportError as e:
     def track_conversion(*args, **kwargs): pass
     analytics_router = None
 
+# Admin Dashboard Router (Phase 1.5)
+try:
+    from backend.routes.admin import router as admin_router
+    ADMIN_AVAILABLE = True
+except ImportError:
+    logger.warning("⚠️ Admin dashboard router not available")
+    ADMIN_AVAILABLE = False
+    admin_router = None
+
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 WEBHOOK_URL = os.getenv('WEBHOOK_URL')
 PORT = int(os.getenv('PORT', 8080))
@@ -138,6 +147,13 @@ if ANALYTICS_AVAILABLE and analytics_router:
     logger.info("✅ Analytics router registered at /analytics")
 else:
     logger.warning("⚠️ Analytics router NOT registered")
+
+# Include Admin Dashboard Router (Phase 1.5)
+if ADMIN_AVAILABLE and admin_router:
+    app.include_router(admin_router)
+    logger.info("✅ Admin dashboard router registered at /admin/users")
+else:
+    logger.warning("⚠️ Admin dashboard router NOT registered")
 
 # Command handlers
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
