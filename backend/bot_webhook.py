@@ -363,9 +363,6 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/analyze Ethereum merge completes successfully`",
             parse_mode='Markdown'
         )
-        # Track failed command
-        if ANALYTICS_AVAILABLE:
-            track_command('analyze', user_id, success=False, error='missing_text')
         return
     
     try:
@@ -487,8 +484,6 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/add ETH 10 2500` - Buy 10 ETH at $2,500",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('add', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -498,14 +493,10 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Quantity and price must be numbers.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('add', user_id, success=False, error='invalid_numbers')
         return
     
     if quantity <= 0 or price <= 0:
         await update.message.reply_text("❌ Values must be positive.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('add', user_id, success=False, error='negative_values')
         return
     
     try:
@@ -558,8 +549,6 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "`/remove BTC 0.5` - Remove only 0.5 BTC",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('remove', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -570,14 +559,10 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             quantity = float(context.args[1])
             if quantity <= 0:
                 await update.message.reply_text("❌ Quantity must be positive.", parse_mode='Markdown')
-                if ANALYTICS_AVAILABLE:
-                    track_command('remove', user_id, success=False, error='negative_quantity')
-                return
+        return
         except ValueError:
             await update.message.reply_text("❌ Quantity must be a number.", parse_mode='Markdown')
-            if ANALYTICS_AVAILABLE:
-                track_command('remove', user_id, success=False, error='invalid_quantity')
-            return
+        return
     
     try:
         result = portfolio_manager.remove_position(user_id, symbol, quantity)
@@ -633,8 +618,6 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 Automatically records realized P&L for tracking",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('sell', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -644,14 +627,10 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sell_price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Quantity and price must be numbers.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('sell', user_id, success=False, error='invalid_numbers')
         return
     
     if quantity <= 0 or sell_price <= 0:
         await update.message.reply_text("❌ Values must be positive.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('sell', user_id, success=False, error='negative_values')
         return
     
     try:
@@ -839,8 +818,6 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "💡 **You can set BOTH TP and SL independently**",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('setalert', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
@@ -853,22 +830,16 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "**Example:** `/setalert BTC tp 80000`",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('setalert', user_id, success=False, error='invalid_alert_type')
         return
     
     try:
         price = float(context.args[2])
     except ValueError:
         await update.message.reply_text("❌ Price must be a number.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('setalert', user_id, success=False, error='invalid_price')
         return
     
     if price <= 0:
         await update.message.reply_text("❌ Price must be positive.", parse_mode='Markdown')
-        if ANALYTICS_AVAILABLE:
-            track_command('setalert', user_id, success=False, error='negative_price')
         return
     
     if not is_symbol_supported(symbol):
@@ -877,8 +848,6 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Supported cryptos: BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('setalert', user_id, success=False, error='unsupported_symbol')
         return
     
     current_price = get_crypto_price(symbol)
@@ -1088,8 +1057,6 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             "This will remove BOTH TP and SL alerts for the crypto.",
             parse_mode='Markdown'
         )
-        if ANALYTICS_AVAILABLE:
-            track_command('removealert', user_id, success=False, error='invalid_args')
         return
     
     symbol = context.args[0].upper()
