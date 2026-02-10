@@ -357,9 +357,13 @@ async def analyze_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not user_text or len(user_text) < 10:
         await update.message.reply_text(
-            "⚠️ Please provide text to analyze.\\n\\n"
-            "**Examples:**\\n"
-            "`/analyze Bitcoin surges as ETFs see record inflows`\\n"
+            "⚠️ Please provide text to analyze.
+
+"
+            "**Examples:**
+"
+            "`/analyze Bitcoin surges as ETFs see record inflows`
+"
             "`/analyze Ethereum merge completes successfully`",
             parse_mode='Markdown'
         )
@@ -393,9 +397,14 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not DB_AVAILABLE:
         await update.message.reply_text(
-            "⚠️ **Database Unavailable**\\n\\n"
-            "The database is currently offline or connecting.\\n"
-            "Please try again in a few minutes.\\n\\n"
+            "⚠️ **Database Unavailable**
+
+"
+            "The database is currently offline or connecting.
+"
+            "Please try again in a few minutes.
+
+"
             "You can still use `/analyze` for sentiment!",
             parse_mode='Markdown'
         )
@@ -409,16 +418,27 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         portfolio = portfolio_manager.get_portfolio_with_prices(user_id, username)
         
         if not portfolio["positions"]:
-            response = "💼 **Your Crypto Portfolio**\\n\\n"
-            response += "_Your portfolio is empty._\\n\\n"
-            response += "**Add positions with:**\\n"
-            response += "`/add BTC 0.5 45000`\\n"
-            response += "`/add ETH 10 2500`\\n\\n"
-            response += "**Supported cryptos:**\\n"
+            response = "💼 **Your Crypto Portfolio**
+
+"
+            response += "_Your portfolio is empty._
+
+"
+            response += "**Add positions with:**
+"
+            response += "`/add BTC 0.5 45000`
+"
+            response += "`/add ETH 10 2500`
+
+"
+            response += "**Supported cryptos:**
+"
             response += "BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM"
         else:
-            response = "💼 **Your Crypto Portfolio**\\n"
-            response += "_Prices updated in real-time via CoinGecko_\\n"
+            response = "💼 **Your Crypto Portfolio**
+"
+            response += "_Prices updated in real-time via CoinGecko_
+"
             
             for symbol, pos in portfolio["positions"].items():
                 qty = pos["quantity"]
@@ -437,15 +457,25 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     price_display = format_price(current_price)
                     pnl_display = f"{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)"
                 
-                response += f"\\n**{symbol}** {pnl_emoji}\\n"
-                response += f"  • Quantity: `{qty:.8g}`\\n"
-                response += f"  • Avg Price: `{format_price(avg_price)}`\\n"
-                response += f"  • Current: `{price_display}`\\n"
-                response += f"  • Value: `{format_price(current_value) if current_value else 'n/a'}`\\n"
+                response += f"
+**{symbol}** {pnl_emoji}
+"
+                response += f"  • Quantity: `{qty:.8g}`
+"
+                response += f"  • Avg Price: `{format_price(avg_price)}`
+"
+                response += f"  • Current: `{price_display}`
+"
+                response += f"  • Value: `{format_price(current_value) if current_value else 'n/a'}`
+"
                 response += f"  • P&L: `{pnl_display}`"
             
-            response += f"\\n\\n**Total Value:** `{format_price(portfolio['total_current_value'])}`"
-            response += "\\n\\n_Prices by CoinGecko_"
+            response += f"
+
+**Total Value:** `{format_price(portfolio['total_current_value'])}`"
+            response += "
+
+_Prices by CoinGecko_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /portfolio response sent to {user_id}")
@@ -460,7 +490,9 @@ async def portfolio_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(traceback.format_exc())
         
         await update.message.reply_text(
-            "❌ **Error**\\n\\nSomething went wrong with the database. Please try again.",
+            "❌ **Error**
+
+Something went wrong with the database. Please try again.",
             parse_mode='Markdown'
         )
         
@@ -481,9 +513,13 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if len(context.args) != 3:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/add <symbol> <quantity> <price>`\\n\\n"
-            "**Examples:**\\n"
-            "`/add BTC 0.5 45000` - Buy 0.5 BTC at $45,000\\n"
+            "⚠️ **Usage:** `/add <symbol> <quantity> <price>`
+
+"
+            "**Examples:**
+"
+            "`/add BTC 0.5 45000` - Buy 0.5 BTC at $45,000
+"
             "`/add ETH 10 2500` - Buy 10 ETH at $2,500",
             parse_mode='Markdown'
         )
@@ -512,17 +548,24 @@ async def add_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         result = portfolio_manager.add_position(user_id, symbol, quantity, price, username)
         current_price = get_crypto_price(symbol)
         
-        response = f"✅ **Position {result['action'].capitalize()}**\\n\\n"
-        response += f"**{symbol}**\\n"
-        response += f"  • Quantity: `{result['quantity']:.8g}`\\n"
-        response += f"  • Avg Price: `{format_price(result['avg_price'])}`\\n"
+        response = f"✅ **Position {result['action'].capitalize()}**
+
+"
+        response += f"**{symbol}**
+"
+        response += f"  • Quantity: `{result['quantity']:.8g}`
+"
+        response += f"  • Avg Price: `{format_price(result['avg_price'])}`
+"
         
         if current_price:
             current_value = result['quantity'] * current_price
             pnl_usd = current_value - (result['quantity'] * result['avg_price'])
             pnl_percent = ((current_price - result['avg_price']) / result['avg_price']) * 100
             
-            response += f"\\n📊 **Current Status:**\\n"
+            response += f"
+📊 **Current Status:**
+"
             response += f"  • P&L: `{pnl_usd:+,.2f} USD ({pnl_percent:+.2f}%)`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
@@ -552,9 +595,13 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if len(context.args) < 1 or len(context.args) > 2:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/remove <symbol> [quantity]`\\n\\n"
-            "**Examples:**\\n"
-            "`/remove BTC` - Remove all BTC\\n"
+            "⚠️ **Usage:** `/remove <symbol> [quantity]`
+
+"
+            "**Examples:**
+"
+            "`/remove BTC` - Remove all BTC
+"
             "`/remove BTC 0.5` - Remove only 0.5 BTC",
             parse_mode='Markdown'
         )
@@ -590,13 +637,20 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         if result["action"] == "full_remove":
-            response = f"✅ **Position Removed**\\n\\n"
-            response += f"`{symbol}` fully removed from portfolio.\\n"
+            response = f"✅ **Position Removed**
+
+"
+            response += f"`{symbol}` fully removed from portfolio.
+"
             response += f"Quantity removed: `{result['quantity_removed']:.8g}`"
         else:
-            response = f"✅ **Partial Removal**\\n\\n"
-            response += f"**{symbol}**\\n"
-            response += f"  • Removed: `{result['quantity_removed']:.8g}`\\n"
+            response = f"✅ **Partial Removal**
+
+"
+            response += f"**{symbol}**
+"
+            response += f"  • Removed: `{result['quantity_removed']:.8g}`
+"
             response += f"  • Remaining: `{result['quantity_remaining']:.8g}`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
@@ -626,10 +680,16 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if len(context.args) != 3:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/sell <symbol> <quantity> <sell_price>`\\n\\n"
-            "**Examples:**\\n"
-            "`/sell BTC 0.5 75000` - Sell 0.5 BTC at $75,000\\n"
-            "`/sell ETH 5 3500` - Sell 5 ETH at $3,500\\n\\n"
+            "⚠️ **Usage:** `/sell <symbol> <quantity> <sell_price>`
+
+"
+            "**Examples:**
+"
+            "`/sell BTC 0.5 75000` - Sell 0.5 BTC at $75,000
+"
+            "`/sell ETH 5 3500` - Sell 5 ETH at $3,500
+
+"
             "💡 Automatically records realized P&L for tracking",
             parse_mode='Markdown'
         )
@@ -667,17 +727,26 @@ async def sell_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pnl = result["pnl_realized"]
         pnl_emoji = "🟢" if pnl > 0 else ("🔴" if pnl < 0 else "⚪")
         
-        response = f"{pnl_emoji} **SALE EXECUTED**\\n\\n"
-        response += f"**{symbol}**\\n"
-        response += f"  • Quantity sold: `{result['quantity_sold']:.8g}`\\n"
-        response += f"  • Buy price: `{format_price(result['buy_price'])}`\\n"
-        response += f"  • Sell price: `{format_price(result['sell_price'])}`\\n"
-        response += f"  • **P&L Realized: `{pnl:+,.2f} USD ({result['pnl_percent']:+.2f}%)`**\\n"
+        response = f"{pnl_emoji} **SALE EXECUTED**
+
+"
+        response += f"**{symbol}**
+"
+        response += f"  • Quantity sold: `{result['quantity_sold']:.8g}`
+"
+        response += f"  • Buy price: `{format_price(result['buy_price'])}`
+"
+        response += f"  • Sell price: `{format_price(result['sell_price'])}`
+"
+        response += f"  • **P&L Realized: `{pnl:+,.2f} USD ({result['pnl_percent']:+.2f}%)`**
+"
         
         if result["quantity_remaining"] > 0:
-            response += f"\\nℹ️ Remaining position: `{result['quantity_remaining']:.8g} {symbol}`"
+            response += f"
+ℹ️ Remaining position: `{result['quantity_remaining']:.8g} {symbol}`"
         else:
-            response += f"\\n✅ Position fully closed"
+            response += f"
+✅ Position fully closed"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /sell {symbol} for user {user_id}: P&L {pnl:+.2f}")
@@ -712,7 +781,9 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if summary["num_positions"] == 0:
             await update.message.reply_text(
-                "📊 **Portfolio Empty**\\n\\nUse `/add BTC 0.5 45000` to start tracking!",
+                "📊 **Portfolio Empty**
+
+Use `/add BTC 0.5 45000` to start tracking!",
                 parse_mode='Markdown'
             )
             if ANALYTICS_AVAILABLE:
@@ -722,29 +793,49 @@ async def summary_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_pnl = summary["total_pnl"]
         overall_emoji = "🚀" if total_pnl > 0 else "📉"
         
-        response = f"{overall_emoji} **PORTFOLIO ANALYTICS**\\n"
-        response += f"\\n──────────────────\\n"
-        response += f"📊 **GLOBAL PERFORMANCE**\\n"
-        response += f"──────────────────\\n\\n"
-        response += f"💰 **Total P&L: `{total_pnl:+,.2f} USD`**\\n"
-        response += f"  • Unrealized: `{summary['unrealized_pnl']:+,.2f} USD ({summary['unrealized_pnl_percent']:+.2f}%)`\\n"
-        response += f"  • Realized: `{summary['realized_pnl']:+,.2f} USD`\\n\\n"
-        response += f"💵 **Capital:**\\n"
-        response += f"  • Invested: `{format_price(summary['total_invested'])}`\\n"
-        response += f"  • Current value: `{format_price(summary['total_current_value'])}`\\n"
-        response += f"  • Active positions: `{summary['num_positions']}`\\n"
+        response = f"{overall_emoji} **PORTFOLIO ANALYTICS**
+"
+        response += f"
+──────────────────
+"
+        response += f"📊 **GLOBAL PERFORMANCE**
+"
+        response += f"──────────────────
+
+"
+        response += f"💰 **Total P&L: `{total_pnl:+,.2f} USD`**
+"
+        response += f"  • Unrealized: `{summary['unrealized_pnl']:+,.2f} USD ({summary['unrealized_pnl_percent']:+.2f}%)`
+"
+        response += f"  • Realized: `{summary['realized_pnl']:+,.2f} USD`
+
+"
+        response += f"💵 **Capital:**
+"
+        response += f"  • Invested: `{format_price(summary['total_invested'])}`
+"
+        response += f"  • Current value: `{format_price(summary['total_current_value'])}`
+"
+        response += f"  • Active positions: `{summary['num_positions']}`
+"
         
         if summary["best_performer"]:
             best = summary["best_performer"]
             worst = summary["worst_performer"]
-            response += f"\\n🏆 **Best performer:** `{best['symbol']}` ({best['pnl_percent']:+.2f}%)\\n"
-            response += f"📉 **Worst performer:** `{worst['symbol']}` ({worst['pnl_percent']:+.2f}%)\\n"
+            response += f"
+🏆 **Best performer:** `{best['symbol']}` ({best['pnl_percent']:+.2f}%)
+"
+            response += f"📉 **Worst performer:** `{worst['symbol']}` ({worst['pnl_percent']:+.2f}%)
+"
         
         div_score = summary["diversification_score"]
         div_emoji = "🟢" if div_score >= 80 else ("🟡" if div_score >= 50 else "🔴")
-        response += f"\\n{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)\\n"
+        response += f"
+{div_emoji} **Diversification:** {div_score}% ({summary['num_positions']} positions)
+"
         
-        response += f"\\n_Use `/portfolio` for detailed breakdown_"
+        response += f"
+_Use `/portfolio` for detailed breakdown_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
         logger.info(f"✅ /summary sent to {user_id}")
@@ -776,13 +867,17 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         transactions = portfolio_manager.get_transactions(user_id, limit=5)
         if not transactions:
-            await update.message.reply_text("📃 No transactions yet.\\n\\nUse `/add BTC 0.5 45000` to get started!", parse_mode='Markdown')
+            await update.message.reply_text("📃 No transactions yet.
+
+Use `/add BTC 0.5 45000` to get started!", parse_mode='Markdown')
             if ANALYTICS_AVAILABLE:
                 track_command('history', user_id, success=True)
             return
         
-        response = "📃 **Transaction History**\\n"
-        response += "_Last 5 operations_\\n"
+        response = "📃 **Transaction History**
+"
+        response += "_Last 5 operations_
+"
         
         for i, tx in enumerate(transactions, 1):
             action_emoji = {
@@ -792,12 +887,15 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "PARTIAL_REMOVE": "⚠️"
             }.get(tx['action'], "🔹")
             
-            response += f"\\n**{i}.** {action_emoji} {tx['action']} `{tx['symbol']}`\\n"
+            response += f"
+**{i}.** {action_emoji} {tx['action']} `{tx['symbol']}`
+"
             response += f"   Qty: `{tx['quantity']:.8g}` @ `{format_price(tx['price'])}`"
             
             if 'pnl' in tx and tx['pnl'] is not None:
                 pnl_emoji = "🟢" if tx['pnl'] > 0 else "🔴"
-                response += f"\\n   {pnl_emoji} P&L: `{tx['pnl']:+,.2f} USD`"
+                response += f"
+   {pnl_emoji} P&L: `{tx['pnl']:+,.2f} USD`"
         
         await update.message.reply_text(response, parse_mode='Markdown')
         logger.info(f"✅ /history sent to {user_id}")
@@ -831,11 +929,18 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if len(context.args) != 3:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/setalert <symbol> <tp|sl> <price>`\\n\\n"
-            "**Examples:**\\n"
-            "`/setalert BTC tp 100000` - Take Profit at $100k\\n"
-            "`/setalert BTC sl 40000` - Stop Loss at $40k\\n"
-            "`/setalert ETH tp 5000` - Take Profit ETH at $5k\\n\\n"
+            "⚠️ **Usage:** `/setalert <symbol> <tp|sl> <price>`
+
+"
+            "**Examples:**
+"
+            "`/setalert BTC tp 100000` - Take Profit at $100k
+"
+            "`/setalert BTC sl 40000` - Stop Loss at $40k
+"
+            "`/setalert ETH tp 5000` - Take Profit ETH at $5k
+
+"
             "💡 **You can set BOTH TP and SL independently**",
             parse_mode='Markdown'
         )
@@ -848,8 +953,12 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if alert_type not in ['tp', 'sl']:
         await update.message.reply_text(
-            "❌ **Invalid alert type**\\n\\n"
-            "Use `tp` for Take Profit or `sl` for Stop Loss\\n\\n"
+            "❌ **Invalid alert type**
+
+"
+            "Use `tp` for Take Profit or `sl` for Stop Loss
+
+"
             "**Example:** `/setalert BTC tp 80000`",
             parse_mode='Markdown'
         )
@@ -873,7 +982,9 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not is_symbol_supported(symbol):
         await update.message.reply_text(
-            f"❌ **{symbol} not supported**\\n\\n"
+            f"❌ **{symbol} not supported**
+
+"
             "Supported cryptos: BTC, ETH, SOL, BNB, XRP, ADA, AVAX, DOT, MATIC, LINK, UNI, ATOM, LTC, BCH, XLM",
             parse_mode='Markdown'
         )
@@ -885,9 +996,14 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if current_price is None:
         await update.message.reply_text(
-            f"⚠️ **Price API Temporarily Unavailable**\\n\\n"
-            f"Cannot fetch current price for **{symbol}** right now.\\n"
-            f"This is likely a temporary CoinGecko API issue.\\n\\n"
+            f"⚠️ **Price API Temporarily Unavailable**
+
+"
+            f"Cannot fetch current price for **{symbol}** right now.
+"
+            f"This is likely a temporary CoinGecko API issue.
+
+"
             f"💡 **Please try again in a few minutes.**",
             parse_mode='Markdown'
         )
@@ -897,10 +1013,17 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if alert_type == 'tp' and price <= current_price:
         await update.message.reply_text(
-            f"⚠️ **Invalid TP**\\n\\n"
-            f"Take Profit must be **above** current price.\\n\\n"
-            f"Current price: `{format_price(current_price)}`\\n"
-            f"Your TP: `{format_price(price)}`\\n\\n"
+            f"⚠️ **Invalid TP**
+
+"
+            f"Take Profit must be **above** current price.
+
+"
+            f"Current price: `{format_price(current_price)}`
+"
+            f"Your TP: `{format_price(price)}`
+
+"
             f"💡 Set a higher price for TP (e.g., `{format_price(current_price * 1.1)}`)",
             parse_mode='Markdown'
         )
@@ -910,10 +1033,17 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if alert_type == 'sl' and price >= current_price:
         await update.message.reply_text(
-            f"⚠️ **Invalid SL**\\n\\n"
-            f"Stop Loss must be **below** current price.\\n\\n"
-            f"Current price: `{format_price(current_price)}`\\n"
-            f"Your SL: `{format_price(price)}`\\n\\n"
+            f"⚠️ **Invalid SL**
+
+"
+            f"Stop Loss must be **below** current price.
+
+"
+            f"Current price: `{format_price(current_price)}`
+"
+            f"Your SL: `{format_price(price)}`
+
+"
             f"💡 Set a lower price for SL (e.g., `{format_price(current_price * 0.9)}`)",
             parse_mode='Markdown'
         )
@@ -924,14 +1054,20 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     position = redis_storage.get_position(user_id, symbol)
     warning_msg = ""
     if not position and alert_type == 'sl':
-        warning_msg = "\\n⚠️ _You don't hold this asset in your portfolio_\\n"
+        warning_msg = "
+⚠️ _You don't hold this asset in your portfolio_
+"
     
     existing_alert = redis_storage.get_alert(user_id, symbol)
     if existing_alert:
         if alert_type == 'tp' and existing_alert.get('tp'):
             await update.message.reply_text(
-                f"⚠️ **TP Already Exists**\\n\\n"
-                f"**{symbol}** already has a Take Profit at `{format_price(existing_alert['tp'])}`\\n\\n"
+                f"⚠️ **TP Already Exists**
+
+"
+                f"**{symbol}** already has a Take Profit at `{format_price(existing_alert['tp'])}`
+
+"
                 f"To modify, use: `/removealert {symbol}` first, then set new alert.",
                 parse_mode='Markdown'
             )
@@ -941,8 +1077,12 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if alert_type == 'sl' and existing_alert.get('sl'):
             await update.message.reply_text(
-                f"⚠️ **SL Already Exists**\\n\\n"
-                f"**{symbol}** already has a Stop Loss at `{format_price(existing_alert['sl'])}`\\n\\n"
+                f"⚠️ **SL Already Exists**
+
+"
+                f"**{symbol}** already has a Stop Loss at `{format_price(existing_alert['sl'])}`
+
+"
                 f"To modify, use: `/removealert {symbol}` first, then set new alert.",
                 parse_mode='Markdown'
             )
@@ -959,20 +1099,29 @@ async def setalert_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if result["success"]:
             alert = result["alert"]
             
-            response = f"✅ **Alert Set!**\\n\\n"
-            response += f"**{symbol}**\\n"
+            response = f"✅ **Alert Set!**
+
+"
+            response += f"**{symbol}**
+"
             
             if alert.get('tp'):
                 diff_tp = ((alert['tp'] - current_price) / current_price) * 100
-                response += f"🎯 TP: `{format_price(alert['tp'])}` (+{diff_tp:.1f}%)\\n"
+                response += f"🎯 TP: `{format_price(alert['tp'])}` (+{diff_tp:.1f}%)
+"
             
             if alert.get('sl'):
                 diff_sl = ((current_price - alert['sl']) / current_price) * 100
-                response += f"🛡️ SL: `{format_price(alert['sl'])}` (-{diff_sl:.1f}%)\\n"
+                response += f"🛡️ SL: `{format_price(alert['sl'])}` (-{diff_sl:.1f}%)
+"
             
-            response += f"\\n📊 Current: `{format_price(current_price)}`"
+            response += f"
+📊 Current: `{format_price(current_price)}`"
             response += warning_msg
-            response += f"\\n\\n_Alerts checked every 15 minutes_\\n"
+            response += f"
+
+_Alerts checked every 15 minutes_
+"
             response += f"_Use `/listalerts` to see all your alerts_"
             
             await update.message.reply_text(response, parse_mode='Markdown')
@@ -1010,21 +1159,32 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         alerts = redis_storage.get_alerts(user_id)
         
         if not alerts:
-            response = "🔔 **Your Price Alerts**\\n\\n"
-            response += "_You have no active alerts._\\n\\n"
-            response += "**Set alerts with:**\\n"
-            response += "`/setalert BTC tp 100000`\\n"
+            response = "🔔 **Your Price Alerts**
+
+"
+            response += "_You have no active alerts._
+
+"
+            response += "**Set alerts with:**
+"
+            response += "`/setalert BTC tp 100000`
+"
             response += "`/setalert BTC sl 40000`"
         else:
-            response = "🔔 **Your Price Alerts**\\n"
-            response += f"_Active alerts: {len(alerts)}_\\n"
+            response = "🔔 **Your Price Alerts**
+"
+            response += f"_Active alerts: {len(alerts)}_
+"
             
             for symbol, alert_data in alerts.items():
                 current_price = get_crypto_price(symbol)
                 
                 if current_price:
-                    response += f"\\n{'✅' if current_price else '⚠️'} **{symbol}**\\n"
-                    response += f"📊 Current: `{format_price(current_price)}`\\n"
+                    response += f"
+{'✅' if current_price else '⚠️'} **{symbol}**
+"
+                    response += f"📊 Current: `{format_price(current_price)}`
+"
                     
                     if alert_data.get('tp'):
                         tp = alert_data['tp']
@@ -1035,7 +1195,8 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         else:
                             status_tp = f"⏳ Waiting (+{diff_tp:.1f}% to go)"
                         
-                        response += f"🎯 TP: `{format_price(tp)}` - {status_tp}\\n"
+                        response += f"🎯 TP: `{format_price(tp)}` - {status_tp}
+"
                     
                     if alert_data.get('sl'):
                         sl = alert_data['sl']
@@ -1048,10 +1209,15 @@ async def listalerts_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                         
                         response += f"🛡️ SL: `{format_price(sl)}` - {status_sl}"
                 else:
-                    response += f"\\n⚠️ **{symbol}**\\n"
+                    response += f"
+⚠️ **{symbol}**
+"
                     response += f"  • Current: _price unavailable_"
             
-            response += f"\\n\\n_Alerts checked every 15 minutes_\\n"
+            response += f"
+
+_Alerts checked every 15 minutes_
+"
             response += f"_Remove with `/removealert <SYMBOL>`_"
         
         await update.message.reply_text(response, parse_mode='Markdown', disable_web_page_preview=True)
@@ -1083,8 +1249,12 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     
     if len(context.args) != 1:
         await update.message.reply_text(
-            "⚠️ **Usage:** `/removealert <symbol>`\\n\\n"
-            "**Example:** `/removealert BTC`\\n\\n"
+            "⚠️ **Usage:** `/removealert <symbol>`
+
+"
+            "**Example:** `/removealert BTC`
+
+"
             "This will remove BOTH TP and SL alerts for the crypto.",
             parse_mode='Markdown'
         )
@@ -1099,7 +1269,9 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         if not alert:
             await update.message.reply_text(
-                f"⚠️ No alert found for **{symbol}**.\\n\\n"
+                f"⚠️ No alert found for **{symbol}**.
+
+"
                 f"Use `/listalerts` to see your active alerts.",
                 parse_mode='Markdown'
             )
@@ -1110,15 +1282,21 @@ async def removealert_command(update: Update, context: ContextTypes.DEFAULT_TYPE
         success = redis_storage.remove_alert(user_id, symbol)
         
         if success:
-            response = f"✅ **Alerts Removed**\\n\\n"
-            response += f"All alerts for `{symbol}` deleted:\\n"
+            response = f"✅ **Alerts Removed**
+
+"
+            response += f"All alerts for `{symbol}` deleted:
+"
             
             if alert.get('tp'):
-                response += f"  • TP: `{format_price(alert['tp'])}`\\n"
+                response += f"  • TP: `{format_price(alert['tp'])}`
+"
             if alert.get('sl'):
-                response += f"  • SL: `{format_price(alert['sl'])}`\\n"
+                response += f"  • SL: `{format_price(alert['sl'])}`
+"
             
-            response += f"\\n_Use `/setalert` to create new alerts_"
+            response += f"
+_Use `/setalert` to create new alerts_"
             
             await update.message.reply_text(response, parse_mode='Markdown')
             logger.info(f"✅ Alert removed: User {user_id} - {symbol}")
@@ -1179,7 +1357,9 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not STRIPE_AVAILABLE:
         await update.message.reply_text(
-            "⚠️ **Premium subscriptions temporarily unavailable**\\n\\n"
+            "⚠️ **Premium subscriptions temporarily unavailable**
+
+"
             "Please try again later or contact support.",
             parse_mode='Markdown'
         )
@@ -1193,7 +1373,9 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if status == 'premium':
         await update.message.reply_text(
-            "✅ **You're already Premium!**\\n\\n"
+            "✅ **You're already Premium!**
+
+"
             "Use `/manage` to manage your subscription.",
             parse_mode='Markdown'
         )
@@ -1216,14 +1398,25 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            "🔒 **Upgrade to Premium**\\n\\n"
-            "**€9/month** - Cancel anytime\\n\\n"
-            "**Premium Features:**\\n"
-            "✅ Unlimited portfolio tracking\\n"
-            "✅ AI-powered recommendations\\n"
-            "✅ Real-time sentiment alerts\\n"
-            "✅ Advanced analytics\\n"
-            "✅ Priority support\\n\\n"
+            "🔒 **Upgrade to Premium**
+
+"
+            "**€9/month** - Cancel anytime
+
+"
+            "**Premium Features:**
+"
+            "✅ Unlimited portfolio tracking
+"
+            "✅ AI-powered recommendations
+"
+            "✅ Real-time sentiment alerts
+"
+            "✅ Advanced analytics
+"
+            "✅ Priority support
+
+"
             "*Click below to subscribe securely via Stripe*",
             reply_markup=reply_markup,
             parse_mode='Markdown'
@@ -1238,9 +1431,13 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         logger.error(f"❌ Failed to create checkout session: {result['error']}")
         await update.message.reply_text(
-            "❌ **Payment setup error**\\n\\n"
+            "❌ **Payment setup error**
+
+"
             "Sorry, we couldn't create your payment session. "
-            "Please try again later or contact support.\\n\\n"
+            "Please try again later or contact support.
+
+"
             f"Error: {result['error']}",
             parse_mode='Markdown'
         )
@@ -1255,7 +1452,9 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if not STRIPE_AVAILABLE:
         await update.message.reply_text(
-            "⚠️ **Subscription management temporarily unavailable**\\n\\n"
+            "⚠️ **Subscription management temporarily unavailable**
+
+"
             "Please try again later or contact support.",
             parse_mode='Markdown'
         )
@@ -1267,7 +1466,9 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if status != 'premium':
         await update.message.reply_text(
-            "⚠️ **You don't have an active subscription**\\n\\n"
+            "⚠️ **You don't have an active subscription**
+
+"
             "Use `/subscribe` to upgrade to Premium!",
             parse_mode='Markdown'
         )
@@ -1282,20 +1483,31 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         renewal_date = datetime.fromtimestamp(sub['current_period_end']).strftime('%d %b %Y')
         
         message_text = (
-            "✅ **Premium Subscription Active**\\n\\n"
-            f"**Status:** {sub['status'].title()}\\n"
-            f"**Next renewal:** {renewal_date}\\n"
-            f"**Price:** €9/month\\n\\n"
+            "✅ **Premium Subscription Active**
+
+"
+            f"**Status:** {sub['status'].title()}
+"
+            f"**Next renewal:** {renewal_date}
+"
+            f"**Price:** €9/month
+
+"
         )
         
         if sub['cancel_at_period_end']:
             cancel_date = datetime.fromtimestamp(sub['cancel_at']).strftime('%d %b %Y')
-            message_text += f"⚠️ **Subscription will end on:** {cancel_date}\\n\\n"
+            message_text += f"⚠️ **Subscription will end on:** {cancel_date}
+
+"
         
         message_text += (
             "To cancel or update your subscription, "
-            "please contact support at:\\n"
-            "📧 contact.sentinellabs@gmail.com\\n\\n"
+            "please contact support at:
+"
+            "📧 contact.sentinellabs@gmail.com
+
+"
             "_We'll add a self-service portal soon!_"
         )
         
@@ -1306,7 +1518,9 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_command('manage', user_id, success=True)
     else:
         await update.message.reply_text(
-            "❌ **Could not retrieve subscription details**\\n\\n"
+            "❌ **Could not retrieve subscription details**
+
+"
             "Please contact support for assistance.",
             parse_mode='Markdown'
         )
@@ -1357,14 +1571,25 @@ async def mydata_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             document=json_file,
             filename=f"cryptosentinel_data_{user_id}.json",
             caption=(
-                "📦 **Your Data Export (GDPR)**\\n\\n"
-                "This file contains ALL your data stored in CryptoSentinel AI:\\n"
-                "• Profile\\n"
-                "• Portfolio positions\\n"
-                "• Price alerts\\n"
-                "• Transaction history\\n"
-                "• Realized P&L records\\n\\n"
-                "_This is your RIGHT TO ACCESS under GDPR Article 15._\\n\\n"
+                "📦 **Your Data Export (GDPR)**
+
+"
+                "This file contains ALL your data stored in CryptoSentinel AI:
+"
+                "• Profile
+"
+                "• Portfolio positions
+"
+                "• Price alerts
+"
+                "• Transaction history
+"
+                "• Realized P&L records
+
+"
+                "_This is your RIGHT TO ACCESS under GDPR Article 15._
+
+"
                 "📄 [Privacy Policy](https://sentiment-trading-bot-production.up.railway.app/privacy)"
             ),
             parse_mode='Markdown'
@@ -1396,16 +1621,30 @@ async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
     
     confirmation_text = (
-        "⚠️ **DELETE ALL YOUR DATA?**\\n\\n"
-        "This will PERMANENTLY delete:\\n"
-        "• Your profile\\n"
-        "• All portfolio positions\\n"
-        "• All price alerts\\n"
-        "• Transaction history\\n"
-        "• Realized P&L records\\n\\n"
-        "**⚠️ THIS CANNOT BE UNDONE!**\\n\\n"
-        "To confirm, send:\\n"
-        "`/deletedata CONFIRM`\\n\\n"
+        "⚠️ **DELETE ALL YOUR DATA?**
+
+"
+        "This will PERMANENTLY delete:
+"
+        "• Your profile
+"
+        "• All portfolio positions
+"
+        "• All price alerts
+"
+        "• Transaction history
+"
+        "• Realized P&L records
+
+"
+        "**⚠️ THIS CANNOT BE UNDONE!**
+
+"
+        "To confirm, send:
+"
+        "`/deletedata CONFIRM`
+
+"
         "_This is your RIGHT TO ERASURE under GDPR Article 17._"
     )
     
@@ -1430,15 +1669,28 @@ async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
             redis_storage.redis_client.delete(f"user:{user_id}:realized_pnl")
             
             response = (
-                "✅ **DATA DELETED**\\n\\n"
-                "All your data has been permanently deleted from CryptoSentinel AI.\\n\\n"
-                "This includes:\\n"
-                "• Profile\\n"
-                "• Portfolio positions\\n"
-                "• Price alerts\\n"
-                "• Transaction history\\n"
-                "• Realized P&L\\n\\n"
-                "You can start fresh anytime with `/start`.\\n\\n"
+                "✅ **DATA DELETED**
+
+"
+                "All your data has been permanently deleted from CryptoSentinel AI.
+
+"
+                "This includes:
+"
+                "• Profile
+"
+                "• Portfolio positions
+"
+                "• Price alerts
+"
+                "• Transaction history
+"
+                "• Realized P&L
+
+"
+                "You can start fresh anytime with `/start`.
+
+"
                 "Thank you for using CryptoSentinel AI. 👋"
             )
             
@@ -1460,7 +1712,9 @@ async def deletedata_command(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 track_command('deletedata', user_id, success=False, error=str(e))
     else:
         await update.message.reply_text(
-            "⚠️ Invalid confirmation.\\n\\nUse: `/deletedata CONFIRM`",
+            "⚠️ Invalid confirmation.
+
+Use: `/deletedata CONFIRM`",
             parse_mode='Markdown'
         )
         if ANALYTICS_AVAILABLE:
@@ -1525,7 +1779,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(user_message) > 30:
         await analyze_text(update, user_message)
     else:
-        await update.message.reply_text(f"💬 You said: _{user_message}_\\n\\nUse `/analyze` for sentiment analysis!", parse_mode='Markdown')
+        await update.message.reply_text(f"💬 You said: _{user_message}_
+
+Use `/analyze` for sentiment analysis!", parse_mode='Markdown')
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error(f"Bot error: {context.error}")
