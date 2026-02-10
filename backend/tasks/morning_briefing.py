@@ -15,11 +15,12 @@ Replaces:
 
 Runs daily at 8:00 AM CET via Celery Beat.
 
-Last updated: 2026-02-10 09:15 CET
+Last updated: 2026-02-10 09:30 CET
 
 Fixes:
 - Parallel Perplexity calls to avoid timeout
-- Aggressive timeout (10s per call)
+- **FIX #2: Differentiated timeouts (15s bonus, 8s advice)**
+- **FIX #3: Graceful fallback with AI metrics tracking**
 - Fallback to rule-based if AI fails
 - Better error handling with detailed logs
 - CRITICAL FIX: Changed buy_price -> avg_price to match Redis structure
@@ -41,9 +42,17 @@ logger = logging.getLogger(__name__)
 # All supported crypto symbols for Bonus Trade analysis
 SUPPORTED_CRYPTOS = list(SYMBOL_TO_ID.keys())
 
-# Timeout for AI calls (aggressive to avoid task timeout)
-PERPLEXITY_TIMEOUT = 10  # seconds per call
+# FIX #2: Differentiated timeouts to avoid cascading failures
+PERPLEXITY_TIMEOUT_BONUS = 15  # seconds per call (Bonus Trade: max 3 calls)
+PERPLEXITY_TIMEOUT_ADVICE = 8   # seconds per call (Position Advice: 10+ calls)
 MAX_PARALLEL_CALLS = 3  # Max concurrent API calls
+
+# FIX #3: AI metrics counters (global for tracking)
+ai_metrics = {
+    "success": 0,
+    "timeout": 0,
+    "fallback": 0,
+}
 
 
 @app.task(name="backend.tasks.morning_briefing.send_morning_briefing")
@@ -51,12 +60,16 @@ def send_morning_briefing() -> Dict:
     """Send comprehensive morning briefing to all users.
     
     Returns:
-        Dict with task execution summary
+        Dict with task execution summary including AI metrics
     """
     logger.info("="*70)
     logger.info("[MORNING BRIEFING] 🌅 Starting Morning Briefing task...")
     logger.info(f"[MORNING BRIEFING] Task started at: {time.strftime('%Y-%m-%d %H:%M:%S %Z')}")
     logger.info("="*70)
+    
+    # Reset AI metrics at start of task
+    global ai_metrics
+    ai_metrics = {"success": 0, "timeout": 0, "fallback": 0}
     
     storage = RedisStorage()
     perplexity = get_perplexity_client()
@@ -74,6 +87,7 @@ def send_morning_briefing() -> Dict:
         
         if not bonus_trade:
             logger.warning("[MORNING BRIEFING] ⚠️ No Bonus Trade found, using fallback")
+            ai_metrics["fallback"] += 1
             bonus_trade = {
                 "symbol": "BTC",
                 "action": "HOLD",
@@ -90,6 +104,7 @@ def send_morning_briefing() -> Dict:
         )
     except Exception as e:
         logger.error(f"[MORNING BRIEFING] ❌ Error finding bonus trade: {e}", exc_info=True)
+        ai_metrics["fallback"] += 1
         # Use fallback
         bonus_trade = {
             "symbol": "BTC",
@@ -114,6 +129,7 @@ def send_morning_briefing() -> Dict:
                 "users_processed": 0,
                 "briefings_sent": 0,
                 "note": "No users in database",
+                "ai_metrics": ai_metrics,
             }
         
         for user_id in user_ids:
@@ -165,8 +181,10 @@ def send_morning_briefing() -> Dict:
                 try:
                     news_summary = perplexity.get_crypto_news_summary(symbols)
                     logger.info(f"[MORNING BRIEFING] ✅ News fetched ({len(news_summary)} chars)")
+                    ai_metrics["success"] += 1
                 except Exception as e:
                     logger.error(f"[MORNING BRIEFING] News fetch failed for user {chat_id}: {e}")
+                    ai_metrics["fallback"] += 1
                     news_summary = "Market news unavailable at this time. Check CoinGecko or CoinMarketCap for latest updates."
                 
                 # Generate AI advice for each position
@@ -207,6 +225,11 @@ def send_morning_briefing() -> Dict:
                 )
                 errors += 1
         
+        # FIX #3: Calculate AI success rate
+        total_ai_calls = ai_metrics["success"] + ai_metrics["timeout"] + ai_metrics["fallback"]
+        ai_success_rate = (ai_metrics["success"] / total_ai_calls * 100) if total_ai_calls > 0 else 0
+        ai_fallback_rate = (ai_metrics["fallback"] / total_ai_calls * 100) if total_ai_calls > 0 else 0
+        
         result = {
             "status": "completed",
             "users_processed": users_processed,
@@ -218,6 +241,13 @@ def send_morning_briefing() -> Dict:
                 "action": bonus_trade["action"],
                 "confidence": bonus_trade["confidence"],
             },
+            "ai_metrics": {
+                "success": ai_metrics["success"],
+                "timeout": ai_metrics["timeout"],
+                "fallback": ai_metrics["fallback"],
+                "success_rate": round(ai_success_rate, 1),
+                "fallback_rate": round(ai_fallback_rate, 1),
+            },
         }
         
         logger.info("="*70)
@@ -227,6 +257,21 @@ def send_morning_briefing() -> Dict:
             f"{skipped_no_portfolio} no portfolio, "
             f"{errors} errors"
         )
+        logger.info(
+            f"[MORNING BRIEFING] 🤖 AI Performance: "
+            f"{ai_metrics['success']} success, "
+            f"{ai_metrics['timeout']} timeout, "
+            f"{ai_metrics['fallback']} fallback "
+            f"({ai_success_rate:.1f}% success rate)"
+        )
+        
+        # FIX #3: Alert if fallback rate too high
+        if ai_fallback_rate > 30 and total_ai_calls > 5:
+            logger.warning(
+                f"[MORNING BRIEFING] ⚠️ HIGH FALLBACK RATE: {ai_fallback_rate:.1f}% "
+                f"({ai_metrics['fallback']}/{total_ai_calls} calls failed)"
+            )
+        
         logger.info("="*70)
         return result
     
@@ -239,6 +284,7 @@ def send_morning_briefing() -> Dict:
             "error": str(e),
             "users_processed": users_processed,
             "briefings_sent": briefings_sent,
+            "ai_metrics": ai_metrics,
         }
 
 
@@ -246,6 +292,7 @@ def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
     """Find the best crypto trading opportunity of the day.
     
     Analyzes top cryptos IN PARALLEL and selects the highest-conviction BUY signal.
+    Uses PERPLEXITY_TIMEOUT_BONUS (15s) for each call.
     
     Args:
         perplexity: Perplexity client instance
@@ -307,9 +354,11 @@ def find_bonus_trade_of_day(perplexity) -> Optional[Dict]:
                         logger.info(f"[BONUS TRADE] {symbol}: No strong signal")
                 
                 except concurrent.futures.TimeoutError:
-                    logger.error(f"[BONUS TRADE] ❌ Timeout analyzing {symbol}")
+                    logger.error(f"[BONUS TRADE] ❌ AI_TIMEOUT analyzing {symbol}")
+                    ai_metrics["timeout"] += 1
                 except Exception as e:
                     logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
+                    ai_metrics["fallback"] += 1
         
         if not opportunities:
             logger.error("[BONUS TRADE] ❌ No opportunities identified")
@@ -334,6 +383,8 @@ def analyze_trade_opportunity(
     perplexity,
 ) -> Optional[Dict]:
     """Analyze a single crypto for trading opportunity using Perplexity AI.
+    
+    Uses PERPLEXITY_TIMEOUT_BONUS (15s) timeout.
     
     Args:
         symbol: Crypto symbol (e.g., 'BTC')
@@ -374,7 +425,7 @@ Focus on last 24-48 hours only. Be specific and brief.
                     {"role": "user", "content": prompt},
                 ],
             },
-            timeout=PERPLEXITY_TIMEOUT,  # Aggressive timeout
+            timeout=PERPLEXITY_TIMEOUT_BONUS,  # FIX #2: Use differentiated timeout (15s)
         )
         response.raise_for_status()
         
@@ -385,6 +436,9 @@ Focus on last 24-48 hours only. Be specific and brief.
         action = extract_action(content)
         confidence = extract_confidence(content)
         risk_level = extract_risk_level(content)
+        
+        # Track success
+        ai_metrics["success"] += 1
         
         # Only consider BUY opportunities with >60% confidence
         if action != "BUY" or confidence < 60:
@@ -404,10 +458,12 @@ Focus on last 24-48 hours only. Be specific and brief.
         }
     
     except requests.exceptions.Timeout:
-        logger.error(f"[BONUS TRADE] ❌ Timeout analyzing {symbol} after {PERPLEXITY_TIMEOUT}s")
+        logger.error(f"[BONUS TRADE] ❌ AI_TIMEOUT analyzing {symbol} after {PERPLEXITY_TIMEOUT_BONUS}s")
+        ai_metrics["timeout"] += 1
         return None
     except Exception as e:
-        logger.error(f"[BONUS TRADE] ❌ Error analyzing {symbol}: {e}")
+        logger.error(f"[BONUS TRADE] ❌ AI_FALLBACK for {symbol}: {e}")
+        ai_metrics["fallback"] += 1
         return None
 
 
@@ -565,7 +621,7 @@ def calculate_portfolio_metrics(portfolio: Dict) -> Dict | None:
 def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
     """Generate AI-powered advice for each portfolio position.
     
-    Uses PARALLEL calls to speed up processing.
+    Uses PARALLEL calls with PERPLEXITY_TIMEOUT_ADVICE (8s) to speed up processing.
     
     Args:
         portfolio: User's portfolio dict
@@ -635,8 +691,28 @@ def generate_position_advice(portfolio: Dict, perplexity) -> List[Dict]:
                     
                     logger.info(f"[ADVICE] ✅ {task['symbol']}: {advice_text[:50]}...")
                 
+                except concurrent.futures.TimeoutError:
+                    logger.error(f"[ADVICE] ❌ AI_TIMEOUT for {task['symbol']}")
+                    ai_metrics["timeout"] += 1
+                    # FIX #3: Add fallback advice
+                    advice_list.append({
+                        "symbol": task["symbol"],
+                        "pnl_pct": task["pnl_pct"],
+                        "current_price": task["current_price"],
+                        "avg_price": task["avg_price"],
+                        "advice": get_fallback_advice(task["pnl_pct"]),
+                    })
                 except Exception as e:
                     logger.error(f"[ADVICE] ❌ Error getting advice for {task['symbol']}: {e}")
+                    ai_metrics["fallback"] += 1
+                    # FIX #3: Add fallback advice
+                    advice_list.append({
+                        "symbol": task["symbol"],
+                        "pnl_pct": task["pnl_pct"],
+                        "current_price": task["current_price"],
+                        "avg_price": task["avg_price"],
+                        "advice": get_fallback_advice(task["pnl_pct"]),
+                    })
         
         logger.info(f"[ADVICE] ✅ Generated {len(advice_list)}/{len(tasks)} advice items")
         return advice_list
@@ -650,6 +726,8 @@ def get_quick_position_advice(
     perplexity, symbol: str, current_price: float, avg_price: float, pnl_pct: float
 ) -> str:
     """Get quick AI advice for a single position.
+    
+    Uses PERPLEXITY_TIMEOUT_ADVICE (8s) timeout.
     
     Args:
         perplexity: Perplexity client
@@ -688,7 +766,7 @@ Example: "HOLD: Strong support at $40k."
                     {"role": "user", "content": prompt},
                 ],
             },
-            timeout=PERPLEXITY_TIMEOUT,
+            timeout=PERPLEXITY_TIMEOUT_ADVICE,  # FIX #2: Use differentiated timeout (8s)
         )
         response.raise_for_status()
         
@@ -703,19 +781,40 @@ Example: "HOLD: Strong support at $40k."
         if len(advice) > 120:
             advice = advice[:117] + "..."
         
+        # Track success
+        ai_metrics["success"] += 1
+        
         return advice
     
+    except requests.exceptions.Timeout:
+        logger.error(f"[ADVICE] ❌ AI_TIMEOUT for {symbol} after {PERPLEXITY_TIMEOUT_ADVICE}s")
+        ai_metrics["timeout"] += 1
+        # FIX #3: Fallback to rule-based advice
+        return get_fallback_advice(pnl_pct)
+    
     except Exception as e:
-        logger.error(f"[ADVICE] Error getting quick advice for {symbol}: {e}")
-        
-        # Fallback to rule-based advice
-        if pnl_pct > 20:
-            return "TAKE PROFIT: Consider selling 30-50% to secure gains."
-        elif pnl_pct > 10:
-            return "HOLD: Strong position, monitor resistance levels."
-        elif pnl_pct > 0:
-            return "HOLD: In profit, wait for clearer trend."
-        elif pnl_pct > -10:
-            return "HOLD: Small drawdown, avoid panic selling."
-        else:
-            return "REVIEW: Consider stop-loss to limit further losses."
+        logger.error(f"[ADVICE] ❌ AI_FALLBACK for {symbol}: {e}")
+        ai_metrics["fallback"] += 1
+        # FIX #3: Fallback to rule-based advice
+        return get_fallback_advice(pnl_pct)
+
+
+def get_fallback_advice(pnl_pct: float) -> str:
+    """FIX #3: Get rule-based fallback advice when AI unavailable.
+    
+    Args:
+        pnl_pct: P&L percentage
+    
+    Returns:
+        Simple rule-based advice string
+    """
+    if pnl_pct > 20:
+        return "TAKE PROFIT: Consider selling 30-50% to secure gains."
+    elif pnl_pct > 10:
+        return "HOLD: Strong position, monitor resistance levels."
+    elif pnl_pct > 0:
+        return "HOLD: In profit, wait for clearer trend."
+    elif pnl_pct > -10:
+        return "HOLD: Small drawdown, avoid panic selling."
+    else:
+        return "REVIEW: Consider stop-loss to limit further losses."
