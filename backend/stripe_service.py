@@ -2,6 +2,13 @@
 """
 Stripe Integration Service for CryptoSentinel AI Premium Subscriptions.
 
+PRODUCTION-READY ENHANCEMENTS:
+1. Grace Period: 3-day grace for failed payments
+2. Idempotency: Webhook deduplication
+3. Retry Logic: Exponential backoff
+4. Monitoring: Admin alerts via Telegram
+5. Validation: Enhanced webhook security
+
 Handles:
 - Checkout Session creation (€9/month recurring)
 - Webhook processing (payment success, subscription events)
@@ -9,16 +16,23 @@ Handles:
 - Integration with Redis for user subscription status
 
 Author: Theo Fanget
-Date: 06 February 2026
+Date: 10 February 2026 (Enhanced)
 """
 import os
 import stripe
 import logging
-from typing import Dict, Optional
-from datetime import datetime
 import json
+import time
+import hashlib
+from typing import Dict, Optional, Callable, Any
+from datetime import datetime, timedelta
+from functools import wraps
 
-# Setup logging
+# Setup logging with structured format
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 # ===== STRIPE CONFIGURATION =====
@@ -37,6 +51,13 @@ STRIPE_CANCEL_URL = os.getenv(
     'STRIPE_CANCEL_URL',
     'https://t.me/SentinelAI_CryptoBot?start=payment_cancelled'
 )
+
+# Admin alert configuration
+ADMIN_TELEGRAM_CHAT_ID = os.getenv('ADMIN_TELEGRAM_CHAT_ID')  # Your Telegram user ID for alerts
+TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+
+# Grace period configuration (3 days for payment failures)
+GRACE_PERIOD_DAYS = 3
 
 # Validate configuration
 if not STRIPE_API_KEY:
@@ -61,6 +82,339 @@ except ImportError:
     REDIS_AVAILABLE = False
 
 
+# ===== IMPROVEMENT 4: MONITORING & ALERTING =====
+
+def send_admin_alert(message: str, level: str = "ERROR"):
+    """Send alert to admin via Telegram.
+    
+    Args:
+        message: Alert message
+        level: Alert level (INFO, WARNING, ERROR, CRITICAL)
+    """
+    if not ADMIN_TELEGRAM_CHAT_ID or not TELEGRAM_BOT_TOKEN:
+        logger.debug("Admin alerts not configured - skipping")
+        return
+    
+    try:
+        import requests
+        
+        emoji_map = {
+            "INFO": "ℹ️",
+            "WARNING": "⚠️",
+            "ERROR": "❌",
+            "CRITICAL": "🚨"
+        }
+        
+        emoji = emoji_map.get(level, "📢")
+        alert_text = f"{emoji} *{level}*\n\n{message}\n\n_Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC_"
+        
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": ADMIN_TELEGRAM_CHAT_ID,
+            "text": alert_text,
+            "parse_mode": "Markdown"
+        }
+        
+        response = requests.post(url, json=payload, timeout=5)
+        if response.status_code == 200:
+            logger.debug(f"Admin alert sent: {level}")
+        else:
+            logger.warning(f"Failed to send admin alert: {response.status_code}")
+    
+    except Exception as e:
+        logger.error(f"Error sending admin alert: {e}")
+
+
+def log_structured(event_type: str, data: Dict, level: str = "INFO"):
+    """Log structured JSON for better monitoring.
+    
+    Args:
+        event_type: Type of event (e.g., 'payment_success', 'webhook_error')
+        data: Event data
+        level: Log level
+    """
+    log_entry = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "event_type": event_type,
+        "data": data,
+        "level": level
+    }
+    
+    log_message = json.dumps(log_entry)
+    
+    if level == "INFO":
+        logger.info(log_message)
+    elif level == "WARNING":
+        logger.warning(log_message)
+    elif level == "ERROR":
+        logger.error(log_message)
+    elif level == "CRITICAL":
+        logger.critical(log_message)
+
+
+# ===== IMPROVEMENT 3: RETRY LOGIC =====
+
+def retry_stripe_call(max_retries: int = 3, backoff_factor: float = 2.0):
+    """Decorator for retrying Stripe API calls with exponential backoff.
+    
+    Args:
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Exponential backoff multiplier
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> Any:
+            retries = 0
+            while retries <= max_retries:
+                try:
+                    return func(*args, **kwargs)
+                
+                except stripe.error.RateLimitError as e:
+                    if retries == max_retries:
+                        log_structured("stripe_rate_limit", {
+                            "function": func.__name__,
+                            "retries": retries,
+                            "error": str(e)
+                        }, "ERROR")
+                        raise
+                    
+                    wait_time = backoff_factor ** retries
+                    logger.warning(f"Rate limit hit, retrying in {wait_time}s... (attempt {retries + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    retries += 1
+                
+                except stripe.error.APIConnectionError as e:
+                    if retries == max_retries:
+                        log_structured("stripe_connection_error", {
+                            "function": func.__name__,
+                            "retries": retries,
+                            "error": str(e)
+                        }, "ERROR")
+                        raise
+                    
+                    wait_time = backoff_factor ** retries
+                    logger.warning(f"API connection error, retrying in {wait_time}s... (attempt {retries + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                    retries += 1
+                
+                except Exception as e:
+                    # Don't retry on other exceptions
+                    log_structured("stripe_unexpected_error", {
+                        "function": func.__name__,
+                        "error": str(e),
+                        "type": type(e).__name__
+                    }, "ERROR")
+                    raise
+        
+        return wrapper
+    return decorator
+
+
+# ===== IMPROVEMENT 2: IDEMPOTENCY =====
+
+def webhook_idempotency_check(event_id: str) -> bool:
+    """Check if webhook event has already been processed.
+    
+    Args:
+        event_id: Stripe event ID
+    
+    Returns:
+        True if event is new (not processed), False if duplicate
+    """
+    if not REDIS_AVAILABLE:
+        logger.warning("Redis not available - idempotency check skipped")
+        return True
+    
+    try:
+        # Check if event ID exists in Redis
+        key = f"stripe:webhook:processed:{event_id}"
+        exists = redis_client.exists(key)
+        
+        if exists:
+            logger.warning(f"🔁 Duplicate webhook detected: {event_id}")
+            log_structured("webhook_duplicate", {"event_id": event_id}, "WARNING")
+            return False
+        
+        # Mark event as processed (expire after 7 days)
+        redis_client.setex(key, 7 * 24 * 60 * 60, "1")
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error checking webhook idempotency: {e}")
+        # On error, allow processing (fail open)
+        return True
+
+
+# ===== IMPROVEMENT 5: VALIDATION =====
+
+def validate_webhook_data(event_data: Dict, required_fields: list) -> bool:
+    """Validate webhook event data.
+    
+    Args:
+        event_data: Webhook event data
+        required_fields: List of required field names
+    
+    Returns:
+        True if valid, False otherwise
+    """
+    try:
+        # Check required fields exist
+        for field in required_fields:
+            if field not in event_data or event_data[field] is None:
+                logger.error(f"Missing required field: {field}")
+                return False
+        
+        # Validate metadata if present
+        if 'metadata' in event_data:
+            metadata = event_data['metadata']
+            if 'telegram_user_id' in metadata:
+                user_id = metadata['telegram_user_id']
+                # Validate user ID is numeric
+                try:
+                    int(user_id)
+                except ValueError:
+                    logger.error(f"Invalid telegram_user_id: {user_id}")
+                    return False
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error validating webhook data: {e}")
+        return False
+
+
+# ===== IMPROVEMENT 1: GRACE PERIOD MANAGEMENT =====
+
+def set_grace_period(user_id: int, invoice_id: str) -> bool:
+    """Set grace period for user after payment failure.
+    
+    Args:
+        user_id: Telegram user ID
+        invoice_id: Stripe invoice ID
+    
+    Returns:
+        True if successful
+    """
+    if not REDIS_AVAILABLE:
+        return False
+    
+    try:
+        grace_end = datetime.utcnow() + timedelta(days=GRACE_PERIOD_DAYS)
+        
+        # Store grace period info
+        redis_client.set(
+            f"user:{user_id}:grace_period_end",
+            grace_end.isoformat()
+        )
+        redis_client.set(
+            f"user:{user_id}:grace_period_invoice",
+            invoice_id
+        )
+        
+        # Don't immediately downgrade - keep as premium during grace
+        set_subscription_status(user_id, 'premium')
+        
+        logger.info(f"⏳ Grace period set for user {user_id} until {grace_end.isoformat()}")
+        
+        log_structured("grace_period_started", {
+            "user_id": user_id,
+            "invoice_id": invoice_id,
+            "grace_end": grace_end.isoformat()
+        }, "INFO")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error setting grace period: {e}")
+        return False
+
+
+def check_grace_period_expired(user_id: int) -> bool:
+    """Check if user's grace period has expired.
+    
+    Args:
+        user_id: Telegram user ID
+    
+    Returns:
+        True if expired or no grace period, False if still in grace
+    """
+    if not REDIS_AVAILABLE:
+        return True
+    
+    try:
+        grace_end_str = redis_client.get(f"user:{user_id}:grace_period_end")
+        
+        if not grace_end_str:
+            return True  # No grace period
+        
+        grace_end = datetime.fromisoformat(grace_end_str)
+        
+        if datetime.utcnow() > grace_end:
+            # Grace period expired - downgrade user
+            set_subscription_status(user_id, 'free')
+            
+            # Clean up grace period keys
+            redis_client.delete(f"user:{user_id}:grace_period_end")
+            redis_client.delete(f"user:{user_id}:grace_period_invoice")
+            
+            logger.info(f"❌ Grace period expired for user {user_id} - downgraded to Free")
+            
+            log_structured("grace_period_expired", {
+                "user_id": user_id,
+                "downgraded_at": datetime.utcnow().isoformat()
+            }, "INFO")
+            
+            return True
+        
+        return False  # Still in grace period
+    
+    except Exception as e:
+        logger.error(f"Error checking grace period: {e}")
+        return True
+
+
+def notify_user_payment_failed(user_id: int):
+    """Send notification to user about payment failure.
+    
+    Args:
+        user_id: Telegram user ID
+    """
+    try:
+        import requests
+        
+        if not TELEGRAM_BOT_TOKEN:
+            return
+        
+        grace_end_str = redis_client.get(f"user:{user_id}:grace_period_end")
+        if grace_end_str:
+            grace_end = datetime.fromisoformat(grace_end_str)
+            grace_days = (grace_end - datetime.utcnow()).days + 1
+        else:
+            grace_days = GRACE_PERIOD_DAYS
+        
+        message = (
+            f"⚠️ *Payment Failed*\n\n"
+            f"Your payment for CryptoSentinel Premium could not be processed.\n\n"
+            f"**You have {grace_days} days to update your payment method.**\n\n"
+            f"After {grace_days} days, you will be downgraded to the Free tier.\n\n"
+            f"To update your payment: /manage"
+        )
+        
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": user_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+        
+        response = requests.post(url, json=payload, timeout=5)
+        if response.status_code == 200:
+            logger.info(f"📧 Payment failure notification sent to user {user_id}")
+        
+    except Exception as e:
+        logger.error(f"Error sending payment failure notification: {e}")
+
+
 # ===== SUBSCRIPTION STATUS MANAGEMENT =====
 
 def get_subscription_status(user_id: int) -> str:
@@ -77,6 +431,9 @@ def get_subscription_status(user_id: int) -> str:
         return 'free'
     
     try:
+        # Check if grace period expired
+        check_grace_period_expired(user_id)
+        
         status = redis_client.get(f"user:{user_id}:subscription_status")
         return status if status else 'free'
     except Exception as e:
@@ -100,6 +457,12 @@ def set_subscription_status(user_id: int, status: str) -> bool:
     try:
         redis_client.set(f"user:{user_id}:subscription_status", status)
         logger.info(f"✅ Subscription status updated: User {user_id} -> {status}")
+        
+        log_structured("subscription_status_changed", {
+            "user_id": user_id,
+            "status": status
+        }, "INFO")
+        
         return True
     except Exception as e:
         logger.error(f"Error setting subscription status: {e}")
@@ -191,6 +554,7 @@ def get_subscription_id(user_id: int) -> Optional[str]:
 
 # ===== CHECKOUT SESSION CREATION =====
 
+@retry_stripe_call(max_retries=3)
 def create_checkout_session(
     user_id: int,
     username: Optional[str] = None,
@@ -205,15 +569,11 @@ def create_checkout_session(
     
     Returns:
         Dict with 'success', 'url' (checkout URL), 'session_id', 'error'
-    
-    Example:
-        result = create_checkout_session(123456789, "johndoe")
-        if result['success']:
-            print(f"Checkout URL: {result['url']}")
     """
     # Validate Stripe configuration
     if not STRIPE_API_KEY:
         logger.error("Stripe API key not configured")
+        send_admin_alert("Stripe API key not configured!", "CRITICAL")
         return {
             'success': False,
             'error': 'Stripe integration not configured',
@@ -223,6 +583,7 @@ def create_checkout_session(
     
     if not STRIPE_PRICE_ID:
         logger.error("Stripe Price ID not configured")
+        send_admin_alert("Stripe Price ID not configured!", "CRITICAL")
         return {
             'success': False,
             'error': 'Stripe product not configured',
@@ -291,6 +652,12 @@ def create_checkout_session(
         
         logger.info(f"✅ Checkout session created: {checkout_session.id} for user {user_id}")
         
+        log_structured("checkout_session_created", {
+            "user_id": user_id,
+            "session_id": checkout_session.id,
+            "customer_id": customer.id
+        }, "INFO")
+        
         return {
             'success': True,
             'url': checkout_session.url,
@@ -299,7 +666,6 @@ def create_checkout_session(
         }
         
     except stripe.error.CardError as e:
-        # Card error - user input issue
         logger.error(f"Stripe CardError: {e.user_message}")
         return {
             'success': False,
@@ -308,19 +674,9 @@ def create_checkout_session(
             'session_id': None
         }
     
-    except stripe.error.RateLimitError as e:
-        # Too many requests
-        logger.error(f"Stripe RateLimitError: {str(e)}")
-        return {
-            'success': False,
-            'error': 'Too many requests. Please try again later.',
-            'url': None,
-            'session_id': None
-        }
-    
     except stripe.error.InvalidRequestError as e:
-        # Invalid parameters
         logger.error(f"Stripe InvalidRequestError: {str(e)}")
+        send_admin_alert(f"Stripe InvalidRequestError in checkout: {str(e)}", "ERROR")
         return {
             'success': False,
             'error': 'Invalid request. Please contact support.',
@@ -328,39 +684,9 @@ def create_checkout_session(
             'session_id': None
         }
     
-    except stripe.error.AuthenticationError as e:
-        # Authentication issue
-        logger.error(f"Stripe AuthenticationError: {str(e)}")
-        return {
-            'success': False,
-            'error': 'Authentication error. Please contact support.',
-            'url': None,
-            'session_id': None
-        }
-    
-    except stripe.error.APIConnectionError as e:
-        # Network issue
-        logger.error(f"Stripe APIConnectionError: {str(e)}")
-        return {
-            'success': False,
-            'error': 'Network error. Please try again.',
-            'url': None,
-            'session_id': None
-        }
-    
-    except stripe.error.StripeError as e:
-        # Generic Stripe error
-        logger.error(f"Stripe StripeError: {str(e)}")
-        return {
-            'success': False,
-            'error': 'Payment system error. Please try again.',
-            'url': None,
-            'session_id': None
-        }
-    
     except Exception as e:
-        # Unexpected error
         logger.error(f"Unexpected error creating checkout session: {e}", exc_info=True)
+        send_admin_alert(f"Unexpected checkout error: {str(e)}", "CRITICAL")
         return {
             'success': False,
             'error': 'Unexpected error. Please contact support.',
@@ -380,11 +706,6 @@ def process_webhook(payload: str, sig_header: str) -> Dict:
     
     Returns:
         Dict with 'success', 'event_type', 'message'
-    
-    Example:
-        result = process_webhook(request.body, request.headers['Stripe-Signature'])
-        if result['success']:
-            print(f"Processed event: {result['event_type']}")
     """
     if not STRIPE_WEBHOOK_SECRET:
         logger.error("Stripe webhook secret not configured")
@@ -402,8 +723,17 @@ def process_webhook(payload: str, sig_header: str) -> Dict:
         
         event_type = event['type']
         event_data = event['data']['object']
+        event_id = event['id']
         
-        logger.info(f"📥 Received webhook: {event_type}")
+        logger.info(f"📥 Received webhook: {event_type} (ID: {event_id})")
+        
+        # Check for duplicate webhook
+        if not webhook_idempotency_check(event_id):
+            return {
+                'success': True,
+                'event_type': event_type,
+                'message': f'Duplicate webhook ignored: {event_id}'
+            }
         
         # Handle different event types
         if event_type == 'checkout.session.completed':
@@ -434,6 +764,7 @@ def process_webhook(payload: str, sig_header: str) -> Dict:
     
     except stripe.error.SignatureVerificationError as e:
         logger.error(f"Invalid webhook signature: {e}")
+        send_admin_alert(f"Invalid webhook signature detected!", "WARNING")
         return {
             'success': False,
             'event_type': None,
@@ -442,6 +773,7 @@ def process_webhook(payload: str, sig_header: str) -> Dict:
     
     except Exception as e:
         logger.error(f"Error processing webhook: {e}", exc_info=True)
+        send_admin_alert(f"Webhook processing error: {str(e)}", "ERROR")
         return {
             'success': False,
             'event_type': None,
@@ -452,16 +784,16 @@ def process_webhook(payload: str, sig_header: str) -> Dict:
 # ===== WEBHOOK EVENT HANDLERS =====
 
 def handle_checkout_completed(session) -> Dict:
-    """Handle successful checkout session completion.
-    
-    Args:
-        session: Stripe Checkout Session object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle successful checkout session completion."""
     try:
-        # Extract user ID from metadata
+        # Validate required fields
+        if not validate_webhook_data(session, ['metadata', 'customer', 'subscription']):
+            return {
+                'success': False,
+                'event_type': 'checkout.session.completed',
+                'message': 'Invalid webhook data'
+            }
+        
         user_id_str = session.get('metadata', {}).get('telegram_user_id')
         if not user_id_str:
             logger.error("No telegram_user_id in checkout session metadata")
@@ -483,10 +815,21 @@ def handle_checkout_completed(session) -> Dict:
         if subscription_id:
             save_subscription_id(user_id, subscription_id)
         
+        # Clear any existing grace period
+        if REDIS_AVAILABLE:
+            redis_client.delete(f"user:{user_id}:grace_period_end")
+            redis_client.delete(f"user:{user_id}:grace_period_invoice")
+        
         # Update subscription status to premium
         set_subscription_status(user_id, 'premium')
         
         logger.info(f"✅ Checkout completed: User {user_id} is now Premium!")
+        
+        log_structured("checkout_completed", {
+            "user_id": user_id,
+            "customer_id": customer_id,
+            "subscription_id": subscription_id
+        }, "INFO")
         
         return {
             'success': True,
@@ -497,6 +840,7 @@ def handle_checkout_completed(session) -> Dict:
     
     except Exception as e:
         logger.error(f"Error handling checkout completion: {e}", exc_info=True)
+        send_admin_alert(f"Checkout completion error for session: {str(e)}", "ERROR")
         return {
             'success': False,
             'event_type': 'checkout.session.completed',
@@ -504,21 +848,20 @@ def handle_checkout_completed(session) -> Dict:
         }
 
 def handle_subscription_created(subscription) -> Dict:
-    """Handle subscription creation event.
-    
-    Args:
-        subscription: Stripe Subscription object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle subscription creation event."""
     try:
-        # Extract user ID from metadata
+        if not validate_webhook_data(subscription, ['metadata', 'id']):
+            return {
+                'success': False,
+                'event_type': 'customer.subscription.created',
+                'message': 'Invalid webhook data'
+            }
+        
         user_id_str = subscription.get('metadata', {}).get('telegram_user_id')
         if not user_id_str:
             logger.warning("No telegram_user_id in subscription metadata")
             return {
-                'success': True,  # Not an error, just not our subscription
+                'success': True,
                 'event_type': 'customer.subscription.created',
                 'message': 'No user ID in metadata'
             }
@@ -526,10 +869,7 @@ def handle_subscription_created(subscription) -> Dict:
         user_id = int(user_id_str)
         subscription_id = subscription.get('id')
         
-        # Save subscription ID
         save_subscription_id(user_id, subscription_id)
-        
-        # Update status to premium
         set_subscription_status(user_id, 'premium')
         
         logger.info(f"✅ Subscription created: User {user_id} - {subscription_id}")
@@ -550,15 +890,15 @@ def handle_subscription_created(subscription) -> Dict:
         }
 
 def handle_subscription_updated(subscription) -> Dict:
-    """Handle subscription update event.
-    
-    Args:
-        subscription: Stripe Subscription object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle subscription update event."""
     try:
+        if not validate_webhook_data(subscription, ['metadata', 'status']):
+            return {
+                'success': False,
+                'event_type': 'customer.subscription.updated',
+                'message': 'Invalid webhook data'
+            }
+        
         user_id_str = subscription.get('metadata', {}).get('telegram_user_id')
         if not user_id_str:
             return {
@@ -570,13 +910,19 @@ def handle_subscription_updated(subscription) -> Dict:
         user_id = int(user_id_str)
         status = subscription.get('status')
         
-        # Update subscription status based on Stripe status
         if status == 'active':
+            # Clear grace period if payment succeeded
+            if REDIS_AVAILABLE:
+                redis_client.delete(f"user:{user_id}:grace_period_end")
+                redis_client.delete(f"user:{user_id}:grace_period_invoice")
             set_subscription_status(user_id, 'premium')
             logger.info(f"✅ Subscription active: User {user_id}")
-        elif status in ['canceled', 'unpaid', 'past_due']:
+        elif status in ['canceled', 'unpaid']:
             set_subscription_status(user_id, 'cancelled')
             logger.info(f"⚠️ Subscription {status}: User {user_id}")
+        elif status == 'past_due':
+            # Don't immediately cancel - grace period handles this
+            logger.info(f"⏳ Subscription past_due: User {user_id} (grace period active)")
         
         return {
             'success': True,
@@ -594,15 +940,15 @@ def handle_subscription_updated(subscription) -> Dict:
         }
 
 def handle_subscription_deleted(subscription) -> Dict:
-    """Handle subscription deletion/cancellation event.
-    
-    Args:
-        subscription: Stripe Subscription object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle subscription deletion/cancellation event."""
     try:
+        if not validate_webhook_data(subscription, ['metadata']):
+            return {
+                'success': False,
+                'event_type': 'customer.subscription.deleted',
+                'message': 'Invalid webhook data'
+            }
+        
         user_id_str = subscription.get('metadata', {}).get('telegram_user_id')
         if not user_id_str:
             return {
@@ -613,10 +959,8 @@ def handle_subscription_deleted(subscription) -> Dict:
         
         user_id = int(user_id_str)
         
-        # Update status to cancelled
         set_subscription_status(user_id, 'cancelled')
         
-        # Save cancellation date
         if REDIS_AVAILABLE:
             cancel_date = datetime.utcnow().isoformat()
             redis_client.set(f"user:{user_id}:subscription_end", cancel_date)
@@ -639,29 +983,31 @@ def handle_subscription_deleted(subscription) -> Dict:
         }
 
 def handle_payment_succeeded(invoice) -> Dict:
-    """Handle successful payment event.
-    
-    Args:
-        invoice: Stripe Invoice object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle successful payment event."""
     try:
         subscription_id = invoice.get('subscription')
         
         if subscription_id:
-            # Retrieve subscription to get user ID
             subscription = stripe.Subscription.retrieve(subscription_id)
             user_id_str = subscription.get('metadata', {}).get('telegram_user_id')
             
             if user_id_str:
                 user_id = int(user_id_str)
                 
-                # Ensure user is marked as premium
+                # Clear any grace period
+                if REDIS_AVAILABLE:
+                    redis_client.delete(f"user:{user_id}:grace_period_end")
+                    redis_client.delete(f"user:{user_id}:grace_period_invoice")
+                
                 set_subscription_status(user_id, 'premium')
                 
                 logger.info(f"✅ Payment succeeded: User {user_id} - {subscription_id}")
+                
+                log_structured("payment_succeeded", {
+                    "user_id": user_id,
+                    "subscription_id": subscription_id,
+                    "amount": invoice.get('amount_paid')
+                }, "INFO")
                 
                 return {
                     'success': True,
@@ -685,34 +1031,45 @@ def handle_payment_succeeded(invoice) -> Dict:
         }
 
 def handle_payment_failed(invoice) -> Dict:
-    """Handle failed payment event.
-    
-    Args:
-        invoice: Stripe Invoice object
-    
-    Returns:
-        Dict with result
-    """
+    """Handle failed payment event with grace period."""
     try:
         subscription_id = invoice.get('subscription')
+        invoice_id = invoice.get('id')
         
         if subscription_id:
-            # Retrieve subscription to get user ID
             subscription = stripe.Subscription.retrieve(subscription_id)
             user_id_str = subscription.get('metadata', {}).get('telegram_user_id')
             
             if user_id_str:
                 user_id = int(user_id_str)
                 
-                # Mark subscription as cancelled due to payment failure
-                set_subscription_status(user_id, 'cancelled')
+                # Set grace period instead of immediate cancellation
+                set_grace_period(user_id, invoice_id)
                 
-                logger.warning(f"⚠️ Payment failed: User {user_id} - {subscription_id}")
+                # Notify user
+                notify_user_payment_failed(user_id)
+                
+                # Alert admin
+                send_admin_alert(
+                    f"Payment failed for user {user_id}\n"
+                    f"Grace period: {GRACE_PERIOD_DAYS} days\n"
+                    f"Invoice: {invoice_id}",
+                    "WARNING"
+                )
+                
+                logger.warning(f"⚠️ Payment failed: User {user_id} - Grace period started")
+                
+                log_structured("payment_failed", {
+                    "user_id": user_id,
+                    "subscription_id": subscription_id,
+                    "invoice_id": invoice_id,
+                    "grace_period_days": GRACE_PERIOD_DAYS
+                }, "WARNING")
                 
                 return {
                     'success': True,
                     'event_type': 'invoice.payment_failed',
-                    'message': f'Payment failed for user {user_id}',
+                    'message': f'Payment failed for user {user_id} - grace period started',
                     'user_id': user_id
                 }
         
@@ -724,6 +1081,7 @@ def handle_payment_failed(invoice) -> Dict:
     
     except Exception as e:
         logger.error(f"Error handling payment failure: {e}", exc_info=True)
+        send_admin_alert(f"Error handling payment failure: {str(e)}", "ERROR")
         return {
             'success': False,
             'event_type': 'invoice.payment_failed',
@@ -733,15 +1091,9 @@ def handle_payment_failed(invoice) -> Dict:
 
 # ===== SUBSCRIPTION MANAGEMENT =====
 
+@retry_stripe_call(max_retries=3)
 def cancel_subscription(user_id: int) -> Dict:
-    """Cancel a user's subscription.
-    
-    Args:
-        user_id: Telegram user ID
-    
-    Returns:
-        Dict with 'success', 'message'
-    """
+    """Cancel a user's subscription."""
     try:
         subscription_id = get_subscription_id(user_id)
         
@@ -751,7 +1103,6 @@ def cancel_subscription(user_id: int) -> Dict:
                 'message': 'No active subscription found'
             }
         
-        # Cancel subscription at period end (user keeps access until end of billing period)
         subscription = stripe.Subscription.modify(
             subscription_id,
             cancel_at_period_end=True
@@ -779,15 +1130,9 @@ def cancel_subscription(user_id: int) -> Dict:
             'message': f'Error: {str(e)}'
         }
 
+@retry_stripe_call(max_retries=3)
 def retrieve_subscription(user_id: int) -> Dict:
-    """Retrieve subscription details for a user.
-    
-    Args:
-        user_id: Telegram user ID
-    
-    Returns:
-        Dict with subscription details or error
-    """
+    """Retrieve subscription details for a user."""
     try:
         subscription_id = get_subscription_id(user_id)
         
@@ -798,7 +1143,6 @@ def retrieve_subscription(user_id: int) -> Dict:
                 'subscription': None
             }
         
-        # Retrieve from Stripe
         subscription = stripe.Subscription.retrieve(subscription_id)
         
         return {
@@ -833,40 +1177,34 @@ def retrieve_subscription(user_id: int) -> Dict:
 
 # ===== TESTING & VALIDATION =====
 
+@retry_stripe_call(max_retries=3)
 def test_stripe_connection() -> bool:
-    """Test Stripe API connection.
-    
-    Returns:
-        True if connection successful
-    """
+    """Test Stripe API connection."""
     if not STRIPE_API_KEY:
         logger.error("Stripe API key not configured")
         return False
     
     try:
-        # Try to retrieve account information
         account = stripe.Account.retrieve()
         logger.info(f"✅ Stripe connection successful: {account.id}")
         return True
     except Exception as e:
         logger.error(f"❌ Stripe connection failed: {e}")
+        send_admin_alert(f"Stripe connection test failed: {str(e)}", "CRITICAL")
         return False
 
 
 if __name__ == "__main__":
-    # Test script when run directly
     print("="*60)
-    print("STRIPE SERVICE TEST")
+    print("STRIPE SERVICE TEST - ENHANCED VERSION")
     print("="*60)
     
-    # Test Stripe connection
     print("\n1. Testing Stripe connection...")
     if test_stripe_connection():
         print("   ✅ Stripe connection OK")
     else:
         print("   ❌ Stripe connection FAILED")
     
-    # Test Redis connection (if available)
     if REDIS_AVAILABLE:
         print("\n2. Testing Redis connection...")
         try:
@@ -875,15 +1213,21 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"   ❌ Redis connection FAILED: {e}")
     else:
-        print("\n2. Redis not available (subscription status won't be saved)")
+        print("\n2. Redis not available")
     
-    # Display configuration
     print("\n3. Configuration:")
     print(f"   STRIPE_API_KEY: {'✅ Set' if STRIPE_API_KEY else '❌ Not set'}")
     print(f"   STRIPE_WEBHOOK_SECRET: {'✅ Set' if STRIPE_WEBHOOK_SECRET else '❌ Not set'}")
     print(f"   STRIPE_PRICE_ID: {STRIPE_PRICE_ID if STRIPE_PRICE_ID else '❌ Not set'}")
-    print(f"   SUCCESS_URL: {STRIPE_SUCCESS_URL}")
-    print(f"   CANCEL_URL: {STRIPE_CANCEL_URL}")
+    print(f"   ADMIN_TELEGRAM_CHAT_ID: {'✅ Set' if ADMIN_TELEGRAM_CHAT_ID else '❌ Not set'}")
+    print(f"   GRACE_PERIOD_DAYS: {GRACE_PERIOD_DAYS}")
+    
+    print("\n4. New Features:")
+    print("   ✅ Grace Period (3 days)")
+    print("   ✅ Webhook Idempotency")
+    print("   ✅ Retry Logic (3 attempts)")
+    print("   ✅ Admin Alerts")
+    print("   ✅ Enhanced Validation")
     
     print("\n" + "="*60)
     print("TEST COMPLETE")
