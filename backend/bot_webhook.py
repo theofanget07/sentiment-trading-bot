@@ -559,10 +559,10 @@ async def remove_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             quantity = float(context.args[1])
             if quantity <= 0:
                 await update.message.reply_text("❌ Quantity must be positive.", parse_mode='Markdown')
-        return
+                return
         except ValueError:
             await update.message.reply_text("❌ Quantity must be a number.", parse_mode='Markdown')
-        return
+            return
     
     try:
         result = portfolio_manager.remove_position(user_id, symbol, quantity)
