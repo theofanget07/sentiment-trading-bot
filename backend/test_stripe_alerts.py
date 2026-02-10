@@ -21,13 +21,24 @@ Date: 10 février 2026
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
-# Add backend to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for imports
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
 
 try:
-    from stripe_service import send_admin_alert, notify_user_payment_failed, TELEGRAM_BOT_TOKEN, ADMIN_TELEGRAM_CHAT_ID
+    from backend.stripe_service import (
+        send_admin_alert, 
+        notify_user_payment_failed, 
+        TELEGRAM_BOT_TOKEN, 
+        ADMIN_TELEGRAM_CHAT_ID,
+        webhook_idempotency_check,
+        set_grace_period,
+        check_grace_period_expired,
+        get_subscription_status,
+        REDIS_AVAILABLE
+    )
     import requests
 except ImportError as e:
     print(f"❌ Erreur d'import: {e}")
@@ -68,6 +79,12 @@ def check_config():
         print("   5. Ajoute-le à Railway: railway variables set ADMIN_TELEGRAM_CHAT_ID=<ton_id>")
         config_ok = False
     
+    # Check Redis
+    if REDIS_AVAILABLE:
+        print("✅ Redis: Disponible")
+    else:
+        print("⚠️ Redis: Non disponible (certains tests seront limités)")
+    
     return config_ok
 
 
@@ -96,9 +113,6 @@ def test_user_payment_failed_notification():
     """Teste la notification utilisateur pour paiement échoué"""
     print_section("📧 TEST NOTIFICATION UTILISATEUR (Payment Failed)")
     
-    # Note: On ne peut pas tester avec un vrai user_id sans avoir un utilisateur
-    # Donc on simule avec ton ADMIN_TELEGRAM_CHAT_ID
-    
     if not ADMIN_TELEGRAM_CHAT_ID:
         print("❌ Impossible de tester sans ADMIN_TELEGRAM_CHAT_ID")
         return
@@ -106,60 +120,46 @@ def test_user_payment_failed_notification():
     print(f"\n📤 Envoi notification à l'admin (simulation user)...")
     print(f"   User ID simulé: {ADMIN_TELEGRAM_CHAT_ID}")
     
-    # Simulate the user notification
+    # Set grace period for testing (if Redis available)
+    if REDIS_AVAILABLE:
+        try:
+            from backend.redis_storage import redis_client
+            grace_end = datetime.utcnow() + timedelta(days=3)
+            redis_client.set(
+                f"user:{ADMIN_TELEGRAM_CHAT_ID}:grace_period_end",
+                grace_end.isoformat()
+            )
+            print("   ✅ Grace period définie dans Redis")
+        except Exception as e:
+            print(f"   ⚠️ Impossible de définir grace period: {e}")
+    else:
+        print("   ⚠️ Redis non disponible - grace period non définie")
+    
+    # Send notification using REAL function
+    print("\n   📨 Appel de notify_user_payment_failed()...")
     try:
-        import requests
-        from backend.redis_storage import redis_client
-        
-        # Set grace period for testing
-        from datetime import datetime, timedelta
-        grace_end = datetime.utcnow() + timedelta(days=3)
-        redis_client.set(
-            f"user:{ADMIN_TELEGRAM_CHAT_ID}:grace_period_end",
-            grace_end.isoformat()
-        )
-        print("   ✅ Grace period définie dans Redis")
-        
+        notify_user_payment_failed(int(ADMIN_TELEGRAM_CHAT_ID))
+        print("   ✅ Fonction appelée avec succès!")
     except Exception as e:
-        print(f"   ⚠️ Impossible de définir grace period: {e}")
+        print(f"   ❌ Erreur lors de l'appel: {e}")
+        import traceback
+        traceback.print_exc()
     
-    # Send notification
-    try:
-        message = (
-            f"⚠️ *Payment Failed*\\n\\n"
-            f"Your payment for CryptoSentinel Premium could not be processed.\\n\\n"
-            f"**You have 3 days to update your payment method.**\\n\\n"
-            f"After 3 days, you will be downgraded to the Free tier.\\n\\n"
-            f"To update your payment: /manage"
-        )
-        
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            "chat_id": ADMIN_TELEGRAM_CHAT_ID,
-            "text": message,
-            "parse_mode": "Markdown"
-        }
-        
-        response = requests.post(url, json=payload, timeout=5)
-        if response.status_code == 200:
-            print("   ✅ Notification utilisateur envoyée!")
-        else:
-            print(f"   ❌ Erreur: {response.status_code}")
-    
-    except Exception as e:
-        print(f"   ❌ Erreur lors de l'envoi: {e}")
-    
-    print("\n✅ Notification utilisateur envoyée!")
+    print("\n✅ Test terminé!")
     print("\n📱 Vérifie ton Telegram - tu devrais avoir reçu le message de payment failed")
+    print("   Le message devrait avoir des retours à la ligne propres (pas de \\n)")
 
 
 def test_webhook_idempotency():
     """Teste le système d'idempotence des webhooks"""
     print_section("🔒 TEST IDEMPOTENCE WEBHOOKS")
     
+    if not REDIS_AVAILABLE:
+        print("\n❌ Redis non disponible - test impossible")
+        return
+    
     try:
         from backend.redis_storage import redis_client
-        from backend.stripe_service import webhook_idempotency_check
         
         test_event_id = f"evt_test_{int(time.time())}"
         
@@ -195,16 +195,20 @@ def test_webhook_idempotency():
         
     except Exception as e:
         print(f"\n❌ Erreur lors du test: {e}")
-        print("   (Redis probablement non disponible)")
+        import traceback
+        traceback.print_exc()
 
 
 def test_grace_period():
     """Teste le système de grace period"""
     print_section("⏳ TEST GRACE PERIOD")
     
+    if not REDIS_AVAILABLE:
+        print("\n❌ Redis non disponible - test impossible")
+        return
+    
     try:
         from backend.redis_storage import redis_client
-        from backend.stripe_service import set_grace_period, check_grace_period_expired, get_subscription_status
         
         test_user_id = int(ADMIN_TELEGRAM_CHAT_ID) if ADMIN_TELEGRAM_CHAT_ID else 999999999
         test_invoice_id = f"in_test_{int(time.time())}"
@@ -224,7 +228,6 @@ def test_grace_period():
         print("\n2️⃣ Vérification grace period...")
         grace_end_str = redis_client.get(f"user:{test_user_id}:grace_period_end")
         if grace_end_str:
-            from datetime import datetime
             grace_end = datetime.fromisoformat(grace_end_str)
             days_left = (grace_end - datetime.utcnow()).days
             print(f"   ✅ Grace period active jusqu'à: {grace_end.strftime('%Y-%m-%d %H:%M')}")
@@ -253,13 +256,15 @@ def test_grace_period():
         print("\n5️⃣ Nettoyage...")
         redis_client.delete(f"user:{test_user_id}:grace_period_end")
         redis_client.delete(f"user:{test_user_id}:grace_period_invoice")
+        redis_client.delete(f"user:{test_user_id}:subscription_status")
         print("   ✅ Test nettoyé")
         
         print("\n✅ Test grace period terminé!")
         
     except Exception as e:
         print(f"\n❌ Erreur lors du test: {e}")
-        print("   (Redis probablement non disponible)")
+        import traceback
+        traceback.print_exc()
 
 
 def main():
@@ -270,7 +275,7 @@ def main():
     
     # Check configuration
     if not check_config():
-        print("\n❌ Configuration incomplète - certains tests seront ignorés")
+        print("\n⚠️ Configuration incomplète - certains tests seront limités")
         response = input("\nContinuer quand même? (y/n): ")
         if response.lower() != 'y':
             print("\n👋 Test annulé")
@@ -318,6 +323,10 @@ def main():
     print("  ✅ TESTS TERMINÉS")
     print("="*60)
     print("\n📱 Vérifie ton Telegram pour les messages reçus")
+    print("\n💡 Notes importantes:")
+    print("   - Les messages utilisent HTML pour le formatage")
+    print("   - Les retours à la ligne doivent être propres (pas de \\n visibles)")
+    print("   - Le texte en gras utilise <b>texte</b>")
     print("\n💡 Pour relancer: python backend/test_stripe_alerts.py")
 
 
