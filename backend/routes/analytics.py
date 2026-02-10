@@ -11,14 +11,10 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 # Import analytics modules
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from analytics.aggregator import MetricsAggregator
-from analytics.reporter import ReportGenerator
-from analytics.alerts import AlertManager
-from redis_storage import get_redis_client
+from backend.analytics.aggregator import MetricsAggregator
+from backend.analytics.reporter import ReportGenerator
+from backend.analytics.alerts import AlertManager
+from backend.redis_storage import get_redis_client
 
 logger = logging.getLogger(__name__)
 
