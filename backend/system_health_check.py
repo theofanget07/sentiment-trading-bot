@@ -25,8 +25,9 @@ import sys
 from datetime import datetime
 from typing import Dict, List, Tuple
 
-# Add backend to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Add parent directory to path for imports
+parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, parent_dir)
 
 
 class HealthCheck:
