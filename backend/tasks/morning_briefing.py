@@ -15,7 +15,7 @@ Replaces:
 
 Runs daily at 8:00 AM CET via Celery Beat.
 
-Last updated: 2026-02-09 17:10 CET
+Last updated: 2026-02-10 09:15 CET
 
 Fixes:
 - Parallel Perplexity calls to avoid timeout
@@ -23,6 +23,7 @@ Fixes:
 - Fallback to rule-based if AI fails
 - Better error handling with detailed logs
 - CRITICAL FIX: Changed buy_price -> avg_price to match Redis structure
+- CRITICAL FIX: Changed get_user_data -> get_user_profile (method exists in RedisStorage)
 """
 
 import logging
@@ -131,8 +132,9 @@ def send_morning_briefing() -> Dict:
                 
                 logger.info(f"[MORNING BRIEFING] User {chat_id} has {len(portfolio)} positions: {list(portfolio.keys())}")
                 
-                # Get username
-                username = storage.get_user_data(chat_id, "username") or "User"
+                # Get username - FIXED: Use correct method get_user_profile()
+                user_profile = storage.get_user_profile(chat_id)
+                username = user_profile.get("username", "User") if user_profile else "User"
                 
                 # Calculate portfolio metrics
                 logger.info(f"[MORNING BRIEFING] Calculating metrics for user {chat_id}...")
