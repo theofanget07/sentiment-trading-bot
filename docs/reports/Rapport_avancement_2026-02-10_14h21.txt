@@ -1,0 +1,240 @@
+=============================================================================
+RAPPORT D'AVANCEMENT - Phase 1.5 : Analytics + Admin Dashboard
+Date: 10 février 2026, 14h21 CET
+=============================================================================
+
+STATUT GLOBAL: ✅ COMPLÉTÉ
+
+=============================================================================
+1. OBJECTIFS DE LA SESSION
+=============================================================================
+
+✅ Intégrer le dashboard admin dans le dashboard Analytics existant
+✅ Résoudre le problème d'authentification admin
+✅ Migrer les users existants dans le système
+✅ Configurer le statut Premium de l'owner
+
+=============================================================================
+2. PROBLÈMES IDENTIFIÉS ET RÉSOLUS
+=============================================================================
+
+[PROBLÈME 1] Dashboard admin créé en standalone au lieu d'être intégré
+→ SOLUTION: Système d'onglets ajouté dans dashboard/index.html
+→ COMMIT: a542238f46f314b7c4e77027d21e733a1c12b41f
+
+[PROBLÈME 2] Users existants non visibles dans le dashboard admin
+→ CAUSE: Créés avant le fix qui ajoute users dans users:all
+→ SOLUTION: Script de migration créé (migrate_users_to_all_set.py)
+→ RÉSULTAT: 1 user migré avec succès (ID: 8548827052)
+→ COMMIT: 35511181da8f9f7b36ab6de8e7ecd44bcf97ceab
+
+[PROBLÈME 3] Authentification admin non fonctionnelle
+→ CAUSE: Incompatibilité Redis (hgetall vs get/set JSON)
+→ SOLUTION: Correction des opérations Redis dans analytics.py
+→ COMMIT: 65d65b08dae3df01d066bb81cf6fbb6b5b294984
+
+[PROBLÈME 4] Statut Premium non configuré pour l'owner
+→ SOLUTION: Vérification via script list_all_users.py
+→ RÉSULTAT: Statut Premium déjà correctement configuré
+
+=============================================================================
+3. MODIFICATIONS TECHNIQUES
+=============================================================================
+
+[FICHIERS MODIFIÉS]
+
+✅ backend/dashboard/index.html
+   - Ajout système d'onglets (📊 Analytics / ⚙️ Admin)
+   - Section authentification admin
+   - Table de gestion des users
+
+✅ backend/dashboard/dashboard.js
+   - Gestion des onglets
+   - Authentification admin via token
+   - Fonction toggleUserTier() pour Premium/Free
+   - Recherche et filtrage des users
+
+✅ backend/dashboard/styles.css
+   - Styles pour les onglets
+   - Styles pour la section admin
+   - Styles pour la table users
+   - Badges Premium/Free
+
+✅ backend/redis_storage.py
+   - set_user_profile() modifié pour ajouter user dans users:all
+   - Documentation des structures Redis mise à jour
+
+✅ backend/routes/analytics.py
+   - Fix incompatibilité Redis (hgetall → get + json.loads)
+   - Ajout logs de debug pour token
+   - Amélioration error handling
+
+[FICHIERS CRÉÉS]
+
+✅ backend/scripts/migrate_users_to_all_set.py
+   - Migration one-time des users existants
+
+✅ backend/scripts/list_all_users.py
+   - Affichage de tous les users avec tier status
+
+✅ backend/scripts/set_user_premium.py
+   - Script CLI pour définir un user comme Premium
+
+✅ backend/scripts/run_all_migrations.py
+   - Orchestration de toutes les migrations
+
+=============================================================================
+4. ARCHITECTURE FINALE
+=============================================================================
+
+[DASHBOARD UNIFIÉ]
+
+URL: /dashboard/
+
+├── 📊 Onglet Analytics (Public)
+│   ├── Métriques Overview (Total Users, MRR, DAU, Commands)
+│   ├── Graphiques (User Growth, Revenue Split)
+│   ├── Détails (Costs, Alerts)
+│   └── Health Status
+│
+└── ⚙️ Onglet Admin (Protected)
+    ├── Authentification par token
+    ├── Stats admin (Total, Premium, Free, MRR)
+    ├── Recherche users
+    ├── Table users avec actions
+    └── Toggle Premium/Free
+
+[ENDPOINTS API]
+
+✅ GET  /analytics/overview          - Métriques globales
+✅ GET  /analytics/users             - Stats users détaillées
+✅ GET  /analytics/revenue           - Métriques revenue
+✅ GET  /analytics/costs             - Métriques coûts
+✅ GET  /analytics/alerts            - Alertes actives
+✅ GET  /analytics/admin/users       - Liste users (protected)
+✅ POST /analytics/admin/user/{id}/toggle - Toggle tier (protected)
+
+=============================================================================
+5. SÉCURITÉ
+=============================================================================
+
+✅ Token admin configuré dans Railway (ADMIN_TOKEN)
+✅ Token généré avec openssl (64 caractères hex)
+✅ Vérification token sur chaque endpoint admin
+✅ Logs d'authentification pour audit
+✅ Pas de token exposé dans le code
+
+=============================================================================
+6. TESTS EFFECTUÉS
+=============================================================================
+
+✅ Migration script exécuté avec succès
+   → 1 user migré (8548827052)
+   → Statut Premium confirmé
+
+✅ API admin testée via curl
+   → Authentification fonctionnelle
+   → Liste users retournée correctement
+
+✅ Dashboard admin testé
+   → Authentification via interface web
+   → Affichage de tous les users
+   → Badges Premium/Free corrects
+   → Indicateur Stripe fonctionnel
+
+✅ Toggle Premium/Free testé
+   → Boutons fonctionnels
+   → Changement de tier opérationnel
+
+=============================================================================
+7. MÉTRIQUES ACTUELLES
+=============================================================================
+
+TOTAL USERS: 1
+PREMIUM USERS: 1 (100%)
+FREE USERS: 0
+MRR: €9.00
+ARR ESTIMATION: €108.00
+
+USER PRINCIPAL:
+├── User ID: 8548827052
+├── Username: @Théo
+├── Tier: 💎 PREMIUM
+└── Stripe: Non configuré (manuel)
+
+=============================================================================
+8. PROCHAINES ÉTAPES RECOMMANDÉES
+=============================================================================
+
+[PHASE 1.5 - COMPLÉTÉE]
+✅ Dashboard Analytics opérationnel
+✅ Dashboard Admin intégré
+✅ Gestion des users fonctionnelle
+
+[PHASE 2 - À VENIR]
+
+⏭️ Intégration Stripe complète
+   - Webhook subscription.created
+   - Webhook subscription.updated
+   - Webhook subscription.deleted
+   - Synchronisation automatique Premium/Free
+
+⏭️ Fonctionnalités Premium à développer
+   - Analyse avancée avec Perplexity
+   - Alertes prix illimitées
+   - Portfolio tracking avancé
+   - Export données
+
+⏭️ Marketing & Growth
+   - Landing page
+   - Tunnel de conversion
+   - Email marketing
+   - Onboarding Premium
+
+=============================================================================
+9. COMMITS DE LA SESSION
+=============================================================================
+
+1. 6ba5bb0e - feat: Add admin section to analytics dashboard
+2. a542238f - feat: Add admin logic to dashboard JavaScript
+3. afabeb5f - fix: Add user to users:all set when profile created
+4. 35511181 - feat: Add migration script for existing users
+5. 73d048f8 - feat: Add admin scripts for user management
+6. 65d65b08 - fix: Correct Redis operations in admin endpoints
+
+=============================================================================
+10. NOTES TECHNIQUES
+=============================================================================
+
+[REDIS DATA STRUCTURE]
+
+users:all                          → Set[str] (tous les user IDs)
+user:{user_id}:profile             → JSON string {user_id, username}
+user:{user_id}:tier                → String "premium" ou "free"
+user:{user_id}:positions:{symbol}  → JSON position data
+subscription:telegram:{user_id}    → Stripe subscription ID
+
+[IMPORTANT]
+- Tous les nouveaux users sont automatiquement ajoutés dans users:all
+- Les profils sont stockés en JSON (pas en Redis hash)
+- Le tier est géré par TierManager
+- L'admin token doit rester secret et sécurisé
+
+=============================================================================
+11. CONCLUSION
+=============================================================================
+
+STATUT: ✅ PHASE 1.5 COMPLÉTÉE AVEC SUCCÈS
+
+Le dashboard Analytics + Admin est maintenant pleinement opérationnel.
+Tous les bugs identifiés ont été corrigés.
+Le système est prêt pour la Phase 2 (Trading Alerts + Stripe).
+
+Durée session: ~1h30
+Nombre de commits: 6
+Lignes de code ajoutées: ~800
+Bugs résolus: 4
+
+=============================================================================
+FIN DU RAPPORT
+=============================================================================
