@@ -1,17 +1,2 @@
-# Railway Deployment Trigger
-# Last updated: 2026-02-04 17:35 CET
-# Reason: Force Railway to detect and deploy latest changes
-
-Deployment History:
-- 2026-02-04 17:35: Bonus Trade of the Day feature - FORCE SYNC
-- 2026-02-04 17:26: Initial trigger (Railway didn't detect)
-
-This file triggers Railway redeployments when auto-detection fails.
-
-Latest features:
-- ✅ Bonus Trade of the Day (backend/tasks/bonus_trade.py)
-- ✅ Celery Beat configuration updated
-- ✅ Notification service enhanced
-- ✅ Complete documentation (BONUS_TRADE_README.md)
-
-Next scheduled execution: 2026-02-05 08:00 CET
+Force redeploy: 2026-02-10 11:21 CET
+Fixing Telegram message formatting deployment
