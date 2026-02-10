@@ -5,6 +5,7 @@ FastAPI endpoints for analytics dashboard + admin management
 
 import logging
 import os
+import json
 from datetime import datetime, timedelta, timezone
 from typing import Dict, Any, Optional
 
@@ -39,6 +40,11 @@ except Exception as e:
 # Admin token from env
 ADMIN_TOKEN = os.getenv('ADMIN_TOKEN')
 
+if ADMIN_TOKEN:
+    logger.info(f"✅ Admin token configured (length: {len(ADMIN_TOKEN)})")
+else:
+    logger.warning("⚠️ Admin token NOT configured!")
+
 # ==================== HELPER FUNCTIONS ====================
 
 def verify_admin_token(token: Optional[str] = None) -> bool:
@@ -47,8 +53,17 @@ def verify_admin_token(token: Optional[str] = None) -> bool:
         logger.warning("⚠️ ADMIN_TOKEN not configured")
         return False
     if not token:
+        logger.warning("⚠️ No token provided")
         return False
-    return token == ADMIN_TOKEN
+    
+    is_valid = token.strip() == ADMIN_TOKEN.strip()
+    
+    if not is_valid:
+        logger.warning(f"❌ Token mismatch: provided={token[:10]}..., expected={ADMIN_TOKEN[:10]}...")
+    else:
+        logger.info("✅ Token validated successfully")
+    
+    return is_valid
 
 # ==================== RESPONSE MODELS ====================
 
@@ -402,20 +417,26 @@ async def get_admin_users(
         raise HTTPException(status_code=401, detail="Unauthorized: Invalid admin token")
     
     try:
-        # Get all user profiles
+        # Get all user IDs from users:all set
         all_user_ids = redis_client.smembers("users:all")
         users_data = []
         
-        for user_id_bytes in all_user_ids:
-            user_id = int(user_id_bytes.decode('utf-8'))
+        logger.info(f"🔍 Found {len(all_user_ids)} users in users:all set")
+        
+        for user_id_str in all_user_ids:
+            # Convert to int (smembers returns strings)
+            user_id = int(user_id_str)
             
-            # Get user profile
-            profile = redis_client.hgetall(f"user:{user_id}:profile")
+            # Get user profile (stored as JSON string with SET command)
+            profile_json = redis_client.get(f"user:{user_id}:profile")
             
-            if not profile:
+            if not profile_json:
+                logger.warning(f"⚠️ User {user_id} in users:all but no profile found")
                 continue
             
-            username = profile.get(b'username', b'Unknown').decode('utf-8')
+            # Parse JSON profile
+            profile = json.loads(profile_json)
+            username = profile.get('username', 'Unknown')
             
             # Apply search filter if provided
             if search:
@@ -434,7 +455,7 @@ async def get_admin_users(
                 "username": username,
                 "is_premium": is_premium,
                 "has_stripe_subscription": has_stripe,
-                "stripe_subscription_id": stripe_sub_id.decode('utf-8') if has_stripe else None
+                "stripe_subscription_id": stripe_sub_id if has_stripe else None
             })
         
         # Sort: Premium first, then by user_id
@@ -445,6 +466,8 @@ async def get_admin_users(
         premium_count = sum(1 for u in users_data if u['is_premium'])
         free_count = total_users - premium_count
         mrr = premium_count * 9.0
+        
+        logger.info(f"✅ Returning {total_users} users ({premium_count} premium, {free_count} free)")
         
         return {
             "total_users": total_users,
