@@ -4,8 +4,8 @@ Helps integrate analytics tracking into bot_webhook.py
 """
 
 import logging
-from analytics.tracker import AnalyticsTracker
-from redis_storage import get_redis_client
+from backend.analytics.tracker import AnalyticsTracker
+from backend.redis_storage import get_redis_client
 
 logger = logging.getLogger(__name__)
 
