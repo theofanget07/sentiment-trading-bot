@@ -127,6 +127,7 @@ class RedisStorage:
 
 # ===== FUNCTION-BASED INTERFACE (backward compatibility) =====
 # Redis Key Structure:
+# users:all -> Set of all user IDs (for admin dashboard)
 # user:{user_id}:profile -> {"user_id": int, "username": str}
 # user:{user_id}:positions:{symbol} -> {"quantity": float, "avg_price": float}
 # user:{user_id}:transactions -> [{"symbol": str, "quantity": float, ...}]
@@ -143,10 +144,17 @@ def get_user_profile(user_id: int) -> Optional[Dict]:
         return None
 
 def set_user_profile(user_id: int, username: str) -> bool:
-    """Save user profile to Redis."""
+    """Save user profile to Redis.
+    
+    Also adds user to global users:all set for admin dashboard.
+    """
     try:
         profile = {"user_id": user_id, "username": username}
         redis_client.set(f"user:{user_id}:profile", json.dumps(profile))
+        
+        # Add to global users set (for admin dashboard)
+        redis_client.sadd("users:all", str(user_id))
+        
         return True
     except Exception as e:
         logger.error(f"Error setting user profile: {e}")
