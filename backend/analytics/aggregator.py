@@ -21,7 +21,7 @@ class MetricsAggregator:
     - Revenue metrics: MRR, ARPU, LTV
     - Engagement metrics: command usage, session length
     - Conversion metrics: Free → Premium rate, time to conversion
-    - Performance metrics: latency, error rate
+    - Performance metrics: latency, error rate (SYSTEM errors only)
     """
     
     def __init__(self, redis_client: redis.Redis):
@@ -238,7 +238,18 @@ class MetricsAggregator:
         date: Optional[datetime] = None
     ) -> float:
         """
-        Get error rate (errors / total events).
+        Get SYSTEM error rate (excludes user errors like "position not found").
+        
+        Only counts:
+        - Database failures
+        - API timeouts
+        - Unhandled exceptions
+        - Infrastructure issues
+        
+        Does NOT count:
+        - User input errors (invalid args, not found, etc.)
+        - User permission errors
+        - User confirmation prompts
         
         Args:
             date: Target date (defaults to today)
@@ -251,13 +262,27 @@ class MetricsAggregator:
         
         date_key = date.strftime("%Y-%m-%d")
         
+        # Count total events
         total_events = int(self.redis.get(f"count:events:{date_key}") or 0)
-        errors = int(self.redis.get(f"count:events:{date_key}:command_error") or 0)
+        
+        # Count ONLY system errors (not user errors)
+        system_errors = int(self.redis.get(f"count:events:{date_key}:command_system_error") or 0)
+        
+        # User errors (for logging, but not included in error rate)
+        user_errors = int(self.redis.get(f"count:events:{date_key}:command_user_error") or 0)
         
         if total_events == 0:
             return 0.0
         
-        return (errors / total_events) * 100
+        error_rate = (system_errors / total_events) * 100
+        
+        # Log for visibility
+        logger.debug(
+            f"📊 Error breakdown for {date_key}: "
+            f"System errors: {system_errors}, User errors: {user_errors}, Total events: {total_events}"
+        )
+        
+        return error_rate
     
     # ==================== COST METRICS ====================
     
