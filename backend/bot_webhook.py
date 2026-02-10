@@ -99,8 +99,11 @@ try:
     )
     from backend.routes.analytics import router as analytics_router
     ANALYTICS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
     logger = logging.getLogger(__name__)
+    logger.error(f"❌ Analytics import error: {e}")
+    import traceback
+    logger.error(f"Full traceback:\n{traceback.format_exc()}")
     logger.warning("⚠️ Analytics system not available")
     ANALYTICS_AVAILABLE = False
     def init_analytics(): return False
