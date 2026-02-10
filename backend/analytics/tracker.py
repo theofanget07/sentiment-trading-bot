@@ -25,6 +25,25 @@ class AnalyticsTracker:
     - API calls (latency, costs)
     """
     
+    # Define user errors that should NOT trigger alerts
+    USER_ERRORS = {
+        'position_not_found',
+        'alert_not_found',
+        'invalid_arguments',
+        'invalid_symbol',
+        'invalid_price',
+        'invalid_quantity',
+        'insufficient_balance',
+        'awaiting_confirmation',
+        'already_premium',
+        'not_premium',
+        'tp_exists',
+        'sl_exists',
+        'invalid_tp_price',
+        'invalid_sl_price',
+        'price_unavailable'  # Temporary API issues, not system errors
+    }
+    
     def __init__(self, redis_client: redis.Redis):
         """
         Initialize the analytics tracker.
@@ -102,6 +121,45 @@ class AnalyticsTracker:
             logger.error(f"❌ Failed to track event {event_type}: {e}")
             return False
     
+    def _is_user_error(self, error: Optional[str]) -> bool:
+        """
+        Determine if an error is a user error (not a system error).
+        
+        Args:
+            error: Error message or code
+        
+        Returns:
+            bool: True if user error, False if system error
+        """
+        if not error:
+            return False
+        
+        error_lower = error.lower()
+        
+        # Check against known user error patterns
+        for user_error_pattern in self.USER_ERRORS:
+            if user_error_pattern in error_lower:
+                return True
+        
+        # Additional patterns
+        user_error_indicators = [
+            'not found',
+            'invalid',
+            'must be',
+            'cannot',
+            'already',
+            'awaiting',
+            'usage:',
+            'example:',
+            'please provide'
+        ]
+        
+        for indicator in user_error_indicators:
+            if indicator in error_lower:
+                return True
+        
+        return False
+    
     def track_command(
         self,
         command: str,
@@ -130,7 +188,20 @@ class AnalyticsTracker:
             "error": error
         }
         
-        event_type = "command_success" if success else "command_error"
+        # Categorize error type
+        if success:
+            event_type = "command_success"
+        else:
+            # Distinguish between user errors and system errors
+            is_user_error = self._is_user_error(error)
+            event_type = "command_user_error" if is_user_error else "command_system_error"
+            
+            # Log for debugging
+            if is_user_error:
+                logger.debug(f"👤 User error in {command}: {error}")
+            else:
+                logger.warning(f"⚠️ System error in {command}: {error}")
+        
         return self.track_event(event_type, user_id, data)
     
     def track_conversion(
