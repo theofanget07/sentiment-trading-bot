@@ -56,7 +56,7 @@ Add in Railway dashboard:
 
 ```bash
 # Telegram
-TELEGRAM_BOT_TOKEN=8305583760:AAGuGE4dpZSFAbMPhKp07h-kU07rxgwixSU
+TELEGRAM_BOT_TOKEN=your_bot_token_from_botfather
 
 # AI
 PERPLEXITY_API_KEY=your_perplexity_key_here
