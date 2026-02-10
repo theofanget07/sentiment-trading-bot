@@ -106,7 +106,16 @@ def send_admin_alert(message: str, level: str = "ERROR"):
         }
         
         emoji = emoji_map.get(level, "📢")
-        alert_text = f"{emoji} *{level}*\n\n{message}\n\n_Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC_"
+        
+        # Build message with proper line breaks
+        lines = [
+            f"{emoji} *{level}*",
+            "",
+            message,
+            "",
+            f"_Time: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC_"
+        ]
+        alert_text = "\n".join(lines)
         
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
@@ -385,20 +394,26 @@ def notify_user_payment_failed(user_id: int):
         if not TELEGRAM_BOT_TOKEN:
             return
         
-        grace_end_str = redis_client.get(f"user:{user_id}:grace_period_end")
+        grace_end_str = redis_client.get(f"user:{user_id}:grace_period_end") if REDIS_AVAILABLE else None
         if grace_end_str:
             grace_end = datetime.fromisoformat(grace_end_str)
             grace_days = (grace_end - datetime.utcnow()).days + 1
         else:
             grace_days = GRACE_PERIOD_DAYS
         
-        message = (
-            f"⚠️ *Payment Failed*\n\n"
-            f"Your payment for CryptoSentinel Premium could not be processed.\n\n"
-            f"**You have {grace_days} days to update your payment method.**\n\n"
-            f"After {grace_days} days, you will be downgraded to the Free tier.\n\n"
-            f"To update your payment: /manage"
-        )
+        # Build message with proper line breaks
+        lines = [
+            "⚠️ *Payment Failed*",
+            "",
+            "Your payment for CryptoSentinel Premium could not be processed.",
+            "",
+            f"*You have {grace_days} days to update your payment method.*",
+            "",
+            f"After {grace_days} days, you will be downgraded to the Free tier.",
+            "",
+            "To update your payment: /manage"
+        ]
+        message = "\n".join(lines)
         
         url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = {
@@ -1049,13 +1064,13 @@ def handle_payment_failed(invoice) -> Dict:
                 # Notify user
                 notify_user_payment_failed(user_id)
                 
-                # Alert admin
-                send_admin_alert(
-                    f"Payment failed for user {user_id}\n"
-                    f"Grace period: {GRACE_PERIOD_DAYS} days\n"
-                    f"Invoice: {invoice_id}",
-                    "WARNING"
-                )
+                # Alert admin with formatted message
+                admin_message = "\n".join([
+                    f"Payment failed for user {user_id}",
+                    f"Grace period: {GRACE_PERIOD_DAYS} days",
+                    f"Invoice: {invoice_id}"
+                ])
+                send_admin_alert(admin_message, "WARNING")
                 
                 logger.warning(f"⚠️ Payment failed: User {user_id} - Grace period started")
                 
