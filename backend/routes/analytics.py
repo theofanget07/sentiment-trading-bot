@@ -447,15 +447,36 @@ async def get_admin_users(
             is_premium = tier_manager.is_premium(user_id)
             
             # Check if has Stripe subscription
-            stripe_sub_id = redis_client.get(f"subscription:telegram:{user_id}")
+            stripe_sub_id = redis_client.get(f"user:{user_id}:subscription_id")
             has_stripe = stripe_sub_id is not None
+            
+            # Get subscription start date
+            sub_start = redis_client.get(f"user:{user_id}:subscription_start")
+            sub_start_date = sub_start if sub_start else None
+            
+            # Check for grace period
+            grace_end_str = redis_client.get(f"user:{user_id}:grace_period_end")
+            in_grace_period = grace_end_str is not None
+            grace_end_date = grace_end_str if in_grace_period else None
+            
+            # Determine Stripe status
+            if in_grace_period:
+                stripe_status = "grace_period"
+            elif has_stripe:
+                stripe_status = "active" if is_premium else "inactive"
+            else:
+                stripe_status = "none"
             
             users_data.append({
                 "user_id": user_id,
                 "username": username,
                 "is_premium": is_premium,
                 "has_stripe_subscription": has_stripe,
-                "stripe_subscription_id": stripe_sub_id if has_stripe else None
+                "stripe_subscription_id": stripe_sub_id if has_stripe else None,
+                "stripe_status": stripe_status,
+                "subscription_start": sub_start_date,
+                "grace_period_end": grace_end_date,
+                "in_grace_period": in_grace_period
             })
         
         # Sort: Premium first, then by user_id
