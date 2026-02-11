@@ -460,6 +460,42 @@ footer a:hover {
     animation: pulse 2s infinite;
 }
 
+.stripe-indicator {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: help;
+}
+
+.stripe-indicator.active {
+    background: #d4edda;
+    color: #155724;
+}
+
+.stripe-indicator.grace-period {
+    background: #fff3cd;
+    color: #856404;
+    animation: pulse-warning 2s infinite;
+}
+
+.stripe-indicator.inactive {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.stripe-indicator.none {
+    background: #e2e3e5;
+    color: #6c757d;
+}
+
+@keyframes pulse-warning {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+
 .btn-action {
     padding: 8px 16px;
     border: none;
