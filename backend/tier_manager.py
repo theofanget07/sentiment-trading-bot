@@ -74,6 +74,39 @@ class TierManager:
         tier = self.get_user_tier(user_id)
         return tier in ['free', 'cancelled']
     
+    def set_tier(self, user_id: int, tier: str) -> bool:
+        """Manually set user tier (admin function).
+        
+        Args:
+            user_id: Telegram user ID
+            tier: 'free' | 'premium'
+        
+        Returns:
+            True if successful
+        
+        Note:
+            This is for manual admin override. 
+            For Stripe-based changes, use stripe_service.set_subscription_status()
+        """
+        from backend.stripe_service import set_subscription_status
+        
+        if tier not in ['free', 'premium']:
+            logger.error(f"Invalid tier: {tier}")
+            return False
+        
+        try:
+            # Use stripe_service to update status (maintains consistency)
+            success = set_subscription_status(user_id, tier)
+            
+            if success:
+                logger.info(f"✅ Admin manually set user {user_id} to {tier}")
+            
+            return success
+        
+        except Exception as e:
+            logger.error(f"Error setting tier for user {user_id}: {e}")
+            return False
+    
     # ===== HELPER: WEEK CALCULATION =====
     
     def _get_week_key(self) -> str:
