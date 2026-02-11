@@ -485,14 +485,16 @@ async def get_admin_users(
         # Calculate stats
         total_users = len(users_data)
         premium_count = sum(1 for u in users_data if u['is_premium'])
+        stripe_premium_count = sum(1 for u in users_data if u['has_stripe_subscription'])
         free_count = total_users - premium_count
-        mrr = premium_count * 9.0
+        mrr = stripe_premium_count * 9.0  # MRR only from Stripe subscriptions
         
-        logger.info(f"✅ Returning {total_users} users ({premium_count} premium, {free_count} free)")
+        logger.info(f"✅ Returning {total_users} users ({premium_count} premium, {free_count} free, {stripe_premium_count} with Stripe)")
         
         return {
             "total_users": total_users,
             "premium_users": premium_count,
+            "stripe_premium_users": stripe_premium_count,
             "free_users": free_count,
             "mrr_eur": round(mrr, 2),
             "users": users_data
