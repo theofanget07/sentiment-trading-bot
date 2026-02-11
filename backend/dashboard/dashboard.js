@@ -354,6 +354,39 @@ async function loadAdminUsers(search = '') {
     }
 }
 
+// Format date for display
+function formatDate(isoString) {
+    if (!isoString) return 'N/A';
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric'
+        });
+    } catch {
+        return 'Invalid date';
+    }
+}
+
+// Get Stripe status badge
+function getStripeStatusBadge(user) {
+    const status = user.stripe_status;
+    const hasStripe = user.has_stripe_subscription;
+    
+    if (status === 'grace_period') {
+        const graceEnd = formatDate(user.grace_period_end);
+        return `<span class="stripe-indicator grace-period" title="Grace period until ${graceEnd}">⏳ Grace</span>`;
+    } else if (status === 'active' && hasStripe) {
+        const startDate = formatDate(user.subscription_start);
+        return `<span class="stripe-indicator active" title="Active since ${startDate}">🟢 Active</span>`;
+    } else if (hasStripe) {
+        return `<span class="stripe-indicator inactive" title="Subscription inactive">🟡 Inactive</span>`;
+    } else {
+        return `<span class="stripe-indicator none" title="No Stripe subscription">⚫ None</span>`;
+    }
+}
+
 // Update users table
 function updateUsersTable(users) {
     const tbody = document.getElementById('usersTableBody');
@@ -373,10 +406,8 @@ function updateUsersTable(users) {
             ? '<span class="badge badge-premium">💎 Premium</span>' 
             : '<span class="badge badge-free">🆓 Free</span>';
         
-        // Stripe indicator
-        const stripeIndicator = user.has_stripe_subscription
-            ? '<span class="stripe-indicator active" title="Active Stripe subscription">🟢</span>'
-            : '<span class="stripe-indicator" title="No Stripe subscription">⚫</span>';
+        // Stripe status badge (enriched with date and grace period)
+        const stripeIndicator = getStripeStatusBadge(user);
         
         // Action button
         const actionBtn = user.is_premium
