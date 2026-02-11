@@ -1233,9 +1233,10 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handler for /manage - Manage existing subscription.
     
-    Handles 2 scenarios:
-    1. Premium via Stripe subscription (shows Stripe details)
-    2. Premium manually granted (no Stripe subscription)
+    Handles 3 scenarios:
+    1. Premium via Stripe subscription (valid subscription_id)
+    2. Premium manually granted (no subscription_id)
+    3. Premium with invalid/expired subscription_id (auto-cleaned, treated as manual)
     """
     user_id = update.effective_chat.id
     
@@ -1316,21 +1317,38 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ANALYTICS_AVAILABLE:
             track_command('manage', user_id, success=True)
     else:
-        # Failed to retrieve Stripe subscription
+        # Stripe subscription not found or invalid/expired
+        # Clean up invalid subscription_id and treat as manual Premium
         error_msg = sub_result.get('error', 'unknown')
-        logger.warning(f"⚠️ Could not retrieve Stripe subscription for user {user_id}: {error_msg}")
+        logger.warning(f"⚠️ Invalid subscription_id for user {user_id}: {error_msg}")
+        logger.info(f"🧹 Auto-cleaning invalid Stripe data for user {user_id}")
         
+        # Clean up invalid subscription_id from Redis
+        try:
+            redis_storage.redis_client.delete(f"user:{user_id}:subscription_id")
+            redis_storage.redis_client.delete(f"user:{user_id}:stripe_customer_id")
+            logger.info(f"✅ Cleaned up invalid Stripe data for user {user_id}")
+        except Exception as e:
+            logger.error(f"Error cleaning up Stripe data: {e}")
+        
+        # Show manual Premium message (user keeps Premium access)
         await update.message.reply_text(
-            "❌ **Could not retrieve subscription details**\n\n"
-            "This may be a temporary issue. Please try again later.\n\n"
-            "If the problem persists, contact support at:\n"
-            "📧 contact.sentinellabs@gmail.com",
+            "✅ **Premium Access Active**\n\n"
+            "**Status:** Premium (Manually Granted)\n"
+            "**Type:** Administrative Access\n\n"
+            "💎 You have full Premium features without a Stripe subscription.\n\n"
+            "This typically means:\n"
+            "• You're a tester/developer\n"
+            "• You received promotional access\n"
+            "• Your subscription was manually activated\n\n"
+            "📧 For questions, contact support at:\n"
+            "contact.sentinellabs@gmail.com",
             parse_mode='Markdown'
         )
         
-        # Track failed manage
+        # Track successful manage (treated as manual Premium after cleanup)
         if ANALYTICS_AVAILABLE:
-            track_command('manage', user_id, success=False, error=error_msg)
+            track_command('manage', user_id, success=True)
 
 # ===== GDPR DATA COMMANDS =====
 
