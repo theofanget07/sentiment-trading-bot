@@ -60,7 +60,7 @@ except ImportError:
 
 # Stripe integration for Premium subscriptions
 try:
-    from backend.stripe_service import create_checkout_session, get_subscription_status, retrieve_subscription
+    from backend.stripe_service import create_checkout_session, get_subscription_status, retrieve_subscription, get_subscription_id
     STRIPE_AVAILABLE = True
 except ImportError:
     logger.warning("⚠️ Stripe service not available - Premium subscriptions disabled")
@@ -1231,7 +1231,12 @@ async def subscribe_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_command('subscribe', user_id, success=False, error=result['error'])
 
 async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler for /manage - Manage existing subscription."""
+    """Handler for /manage - Manage existing subscription.
+    
+    Handles 2 scenarios:
+    1. Premium via Stripe subscription (shows Stripe details)
+    2. Premium manually granted (no Stripe subscription)
+    """
     user_id = update.effective_chat.id
     
     if not STRIPE_AVAILABLE:
@@ -1256,6 +1261,31 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             track_command('manage', user_id, success=False, error='not_premium')
         return
     
+    # Check if user has Stripe subscription ID
+    subscription_id = get_subscription_id(user_id)
+    
+    if not subscription_id:
+        # User is Premium but NO Stripe subscription (manual Premium)
+        await update.message.reply_text(
+            "✅ **Premium Access Active**\n\n"
+            "**Status:** Premium (Manually Granted)\n"
+            "**Type:** Administrative Access\n\n"
+            "💎 You have full Premium features without a Stripe subscription.\n\n"
+            "This typically means:\n"
+            "• You're a tester/developer\n"
+            "• You received promotional access\n"
+            "• Your subscription was manually activated\n\n"
+            "📧 For questions, contact support at:\n"
+            "contact.sentinellabs@gmail.com",
+            parse_mode='Markdown'
+        )
+        
+        # Track successful manage (manual Premium)
+        if ANALYTICS_AVAILABLE:
+            track_command('manage', user_id, success=True)
+        return
+    
+    # User has Stripe subscription - retrieve details
     sub_result = retrieve_subscription(user_id)
     
     if sub_result['success']:
@@ -1286,15 +1316,21 @@ async def manage_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if ANALYTICS_AVAILABLE:
             track_command('manage', user_id, success=True)
     else:
+        # Failed to retrieve Stripe subscription
+        error_msg = sub_result.get('error', 'unknown')
+        logger.warning(f"⚠️ Could not retrieve Stripe subscription for user {user_id}: {error_msg}")
+        
         await update.message.reply_text(
             "❌ **Could not retrieve subscription details**\n\n"
-            "Please contact support for assistance.",
+            "This may be a temporary issue. Please try again later.\n\n"
+            "If the problem persists, contact support at:\n"
+            "📧 contact.sentinellabs@gmail.com",
             parse_mode='Markdown'
         )
         
         # Track failed manage
         if ANALYTICS_AVAILABLE:
-            track_command('manage', user_id, success=False, error=sub_result.get('error', 'unknown'))
+            track_command('manage', user_id, success=False, error=error_msg)
 
 # ===== GDPR DATA COMMANDS =====
 
