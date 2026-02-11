@@ -136,16 +136,32 @@ class MetricsAggregator:
     
     def get_mrr(self, price_per_user: float = 9.0) -> float:
         """
-        Get Monthly Recurring Revenue.
+        Get Monthly Recurring Revenue (ONLY from active Stripe subscriptions).
+        
+        Premium users WITHOUT Stripe subscription (manual Premium) are excluded.
         
         Args:
             price_per_user: Monthly subscription price (€9 default)
         
         Returns:
-            float: MRR in euros
+            float: MRR in euros (only from Stripe subscriptions)
         """
-        premium_users = self.get_premium_users()
-        return premium_users * price_per_user
+        # Count ONLY premium users with active Stripe subscription_id
+        stripe_premium_count = 0
+        
+        # Get all premium users
+        premium_user_ids = self.redis.smembers("users:premium:all")
+        
+        for user_id_bytes in premium_user_ids:
+            user_id = int(user_id_bytes)
+            # Check if has Stripe subscription_id
+            subscription_id = self.redis.get(f"user:{user_id}:subscription_id")
+            if subscription_id:
+                stripe_premium_count += 1
+        
+        logger.debug(f"💰 MRR calculation: {stripe_premium_count} Stripe subscriptions × €{price_per_user} = €{stripe_premium_count * price_per_user}")
+        
+        return stripe_premium_count * price_per_user
     
     def get_arpu(self, price_per_user: float = 9.0) -> float:
         """
